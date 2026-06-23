@@ -1,3 +1,4 @@
+import pandas as pd
 import base64
 import os
 import json
@@ -173,8 +174,7 @@ def save_grocery_analysis(result):
     from datetime import datetime
     from pathlib import Path
     import json
-    import pandas as pd
-
+    
     data_dir = Path("data")
     data_dir.mkdir(exist_ok=True)
 
@@ -212,31 +212,71 @@ def save_grocery_analysis(result):
 
 
 def load_grocery_history_info():
-    from pathlib import Path
-    import json
-    import pandas as pd
-
-    latest_path = Path(os.getenv("PAAI_DATA_DIR", "data")) / "grocery_latest_result.json"
+    latest_result_path = Path(os.getenv("PAAI_DATA_DIR", "data")) / "grocery_latest_result.json"
     history_path = Path(os.getenv("PAAI_DATA_DIR", "data")) / "grocery_upload_history.csv"
 
-    if not latest_path.exists() or not history_path.exists():
+    if not latest_result_path.exists():
         return {
             "has_history": False,
-            "message": "No previous grocery photo analysis found.",
+            "latest_result": {},
+            "first_uploaded_at": None,
+            "last_uploaded_at": None,
+            "upload_count": 0,
         }
 
-    latest_result = json.loads(latest_path.read_text(encoding="utf-8"))
-    history_df = pd.read_csv(history_path)
+    try:
+        latest_result = json.loads(latest_result_path.read_text(encoding="utf-8"))
+    except Exception:
+        latest_result = {}
 
-    first_uploaded_at = history_df["analyzed_at"].iloc[0]
-    last_uploaded_at = history_df["analyzed_at"].iloc[-1]
+    if not history_path.exists():
+        analyzed_at = latest_result.get("analyzed_at", "Not available")
+
+        return {
+            "has_history": bool(latest_result),
+            "latest_result": latest_result,
+            "first_uploaded_at": analyzed_at,
+            "last_uploaded_at": analyzed_at,
+            "upload_count": 1 if latest_result else 0,
+        }
+
+    try:
+        history_df = pd.read_csv(history_path)
+    except Exception:
+        history_df = pd.DataFrame()
+
+    if history_df.empty:
+        analyzed_at = latest_result.get("analyzed_at", "Not available")
+
+        return {
+            "has_history": bool(latest_result),
+            "latest_result": latest_result,
+            "first_uploaded_at": analyzed_at,
+            "last_uploaded_at": analyzed_at,
+            "upload_count": 1 if latest_result else 0,
+        }
+
+    if "analyzed_at" in history_df.columns:
+        time_col = "analyzed_at"
+    elif "Timestamp" in history_df.columns:
+        time_col = "Timestamp"
+    else:
+        time_col = None
+
+    if time_col:
+        first_uploaded_at = str(history_df[time_col].iloc[0])
+        last_uploaded_at = str(history_df[time_col].iloc[-1])
+    else:
+        analyzed_at = latest_result.get("analyzed_at", "Not available")
+        first_uploaded_at = analyzed_at
+        last_uploaded_at = analyzed_at
 
     return {
-        "has_history": True,
+        "has_history": bool(latest_result),
+        "latest_result": latest_result,
         "first_uploaded_at": first_uploaded_at,
         "last_uploaded_at": last_uploaded_at,
-        "latest_result": latest_result,
-        "history_df": history_df,
+        "upload_count": len(history_df),
     }
 
 

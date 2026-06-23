@@ -75,6 +75,31 @@ st.session_state.selected_agent = agent
 
 
 
+
+def get_current_data_dir():
+    mode = st.session_state.get("paai_mode", "Demo")
+    return Path("demo_data") if mode == "Demo" else Path("data")
+
+
+def get_books_inventory_path():
+    return get_current_data_dir() / "books_inventory.csv"
+
+
+def set_paai_data_environment():
+    os.environ["PAAI_DATA_DIR"] = str(get_current_data_dir())
+
+
+def safe_log_activity(user_question, routed_agent, action, result_summary):
+    try:
+        log_activity(
+            user_question=user_question,
+            routed_agent=routed_agent,
+            action=action,
+            result_summary=result_summary,
+        )
+    except Exception:
+        pass
+
 def get_current_data_dir():
     mode = st.session_state.get("paai_mode", "Demo")
     return Path("demo_data") if mode == "Demo" else Path("data")
@@ -254,26 +279,6 @@ def clean_book_query(question):
     return cleaned
 
 
-def save_books_to_library(draft_df):
-    BOOKS_DB_PATH.parent.mkdir(exist_ok=True)
-
-    if BOOKS_DB_PATH.exists():
-        existing_df = pd.read_csv(BOOKS_DB_PATH)
-        combined_df = pd.concat([existing_df, draft_df], ignore_index=True)
-    else:
-        combined_df = draft_df.copy()
-
-    if "Title" in combined_df.columns and "Author" in combined_df.columns:
-        combined_df["Title"] = combined_df["Title"].fillna("").astype(str).str.strip()
-        combined_df["Author"] = combined_df["Author"].fillna("").astype(str).str.strip()
-
-        combined_df = combined_df.drop_duplicates(
-            subset=["Title", "Author"],
-            keep="first",
-        )
-
-    combined_df.to_csv(BOOKS_DB_PATH, index=False)
-    return combined_df
 
 
 def show_grocery_result(result):
@@ -447,429 +452,6 @@ def show_payment_agent(question="What payments are due soon?"):
             st.dataframe(subscriptions_df, use_container_width=True)
 
 
-def show_add_book_flow():
-    st.header("Literacy Agent - Add Book")
-
-    uploaded_book_photo = st.file_uploader(
-        "Upload a clear photo of a book cover, book stack, or bookshelf section",
-        type=["jpg", "jpeg", "png"],
-        key="book_upload",
-    )
-
-    if uploaded_book_photo:
-        st.image(uploaded_book_photo, caption="Uploaded book photo", use_container_width=True)
-
-    if st.button("Analyze Book Photo"):
-        if uploaded_book_photo is None:
-            st.warning("Please upload a book photo first.")
-            return
-
-        with st.spinner("Reading book photo and preparing draft inventory..."):
-            result = build_enriched_book_inventory([uploaded_book_photo])
-
-        if isinstance(result, dict) and "error" in result:
-            st.error(result["error"])
-            st.text(result.get("raw_output", ""))
-            return
-
-        draft_df = pd.DataFrame(result.get("books", []))
-
-        if draft_df.empty:
-            st.warning("I could not detect any books from this photo. Try a clearer close-up photo.")
-            return
-
-        st.success(f"Detected {len(draft_df)} book(s). Review before saving.")
-
-        display_columns = [
-            col for col in [
-                "Display Title",
-                "Title",
-                "Original Title",
-                "Author",
-                "Language",
-                "Genre",
-                "Extraction Confidence",
-                "Needs Review",
-                "Why Uncertain",
-                "Thumbnail",
-            ]
-            if col in draft_df.columns
-        ]
-
-        st.dataframe(draft_df[display_columns], use_container_width=True)
-
-        if st.button("Save Detected Book(s) to My Library"):
-            saved_df = save_books_to_library(draft_df)
-            st.success(f"Saved. Your library now has {len(saved_df)} unique book rows.")
-
-
-def show_book_ownership(question):
-    st.header("Literacy Agent - Book Search")
-
-    book_query = clean_book_query(question)
-
-    if not book_query:
-        st.warning("Please include the book title or author.")
-        return
-
-    result = check_book_ownership(book_query)
-
-    st.write(result["message"])
-
-    matches = result.get("matches", [])
-
-    if matches:
-        for match in matches:
-            col1, col2 = st.columns([1, 4])
-
-            with col1:
-                thumbnail = match.get("Thumbnail")
-                if thumbnail:
-                    st.image(thumbnail, width=90)
-                else:
-                    st.write("No cover")
-
-            with col2:
-                display_title = (
-                    match.get("Display Title")
-                    or match.get("Original Title")
-                    or match.get("Title")
-                    or "Untitled"
-                )
-
-                st.markdown(f"### {display_title}")
-                st.write(f"**Author:** {match.get('Author', 'Unclear')}")
-                st.write(f"**Language:** {match.get('Language', 'Unclear')}")
-                st.write(f"**Genre:** {match.get('Genre', 'Unclear')}")
-                st.caption(
-                    f"Extraction confidence: {match.get('Extraction Confidence', 'Unclear')}"
-                )
-
-
-def show_book_recommendations(question):
-    st.header("Literacy Agent - Mood-Based Recommendations")
-
-    if not BOOKS_DB_PATH.exists():
-        st.warning("I do not see a saved book inventory yet. Add books first by uploading book photos.")
-        return
-
-    df = pd.read_csv(BOOKS_DB_PATH)
-
-    if df.empty:
-        st.warning("Your saved book inventory is empty. Add books first.")
-        return
-
-    mood = extract_mood_from_question(question)
-
-    st.write(f"Using mood: **{mood}**")
-
-    with st.spinner("Finding 3 books from your saved library..."):
-        recommendation_text = recommend_books_by_mood(
-            mood=mood,
-            books_context=df.to_string(index=False),
-        )
-
-    try:
-        recommendation_json = json.loads(recommendation_text)
-        recommendations = recommendation_json.get("recommendations", [])
-
-        if not recommendations:
-            st.info("No recommendations found.")
-            return
-
-        for book in recommendations[:3]:
-            col1, col2 = st.columns([1, 4])
-
-            thumbnail = book.get("thumbnail")
-
-            with col1:
-                if thumbnail:
-                    st.image(thumbnail, width=110)
-                else:
-                    st.write("No cover")
-
-            with col2:
-                st.markdown(f"### {book.get('title', 'Untitled')}")
-                st.write(f"**Author:** {book.get('author', 'Unclear')}")
-                st.write(f"**Language:** {book.get('language', 'Unclear')}")
-                st.write(f"**Subject:** {book.get('genre_or_subject', 'Unclear')}")
-                st.write(f"**Why this fits:** {book.get('why_this_fits', '')}")
-                st.caption(book.get("confidence_note", ""))
-
-    except Exception as error:
-        st.warning("The recommendation response was not in card format. Showing raw response.")
-        st.write(recommendation_text)
-        st.caption(f"Parsing error: {error}")
-
-
-def load_saved_books():
-    books_path = get_books_inventory_path()
-
-    if not books_path.exists():
-        return pd.DataFrame()
-
-    try:
-        df = pd.read_csv(books_path)
-    except pd.errors.EmptyDataError:
-        return pd.DataFrame()
-
-    return df
-
-
-def get_subject_dashboard(df):
-    if df.empty:
-        return pd.DataFrame(columns=["Subject", "Book Count"])
-
-    if "Online Categories" in df.columns:
-        subject_source = df["Online Categories"].fillna("").astype(str)
-    elif "Genre" in df.columns:
-        subject_source = df["Genre"].fillna("").astype(str)
-    else:
-        return pd.DataFrame(columns=["Subject", "Book Count"])
-
-    subjects = []
-
-    for value in subject_source:
-        if not value.strip():
-            subjects.append("Unclear")
-        else:
-            for subject in value.replace(";", ",").split(","):
-                cleaned = subject.strip()
-                if cleaned:
-                    subjects.append(cleaned)
-
-    if not subjects:
-        subjects = ["Unclear"]
-
-    subject_df = pd.Series(subjects).value_counts().reset_index()
-    subject_df.columns = ["Subject", "Book Count"]
-
-    return subject_df
-
-
-def find_duplicate_books(df):
-    if df.empty or "Title" not in df.columns or "Author" not in df.columns:
-        return pd.DataFrame()
-
-    check_df = df.copy()
-
-    check_df["Title Clean"] = (
-        check_df["Title"]
-        .fillna("")
-        .astype(str)
-        .str.lower()
-        .str.strip()
-    )
-
-    check_df["Author Clean"] = (
-        check_df["Author"]
-        .fillna("")
-        .astype(str)
-        .str.lower()
-        .str.strip()
-    )
-
-    duplicates_df = check_df[
-        check_df.duplicated(
-            subset=["Title Clean", "Author Clean"],
-            keep=False,
-        )
-    ].copy()
-
-    return duplicates_df
-
-
-def show_library_summary():
-    st.header("Literacy Agent - Saved Library")
-
-    df = load_saved_books()
-
-    if df.empty:
-        st.warning("No saved books found yet. Add books by uploading book photos.")
-        return
-
-    st.subheader("Library Summary")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.metric("Total books", len(df))
-
-    with col2:
-        if "Language" in df.columns:
-            st.metric("Languages", df["Language"].fillna("Unclear").nunique())
-        else:
-            st.metric("Languages", "N/A")
-
-    with col3:
-        if "Author" in df.columns:
-            st.metric("Authors", df["Author"].fillna("Unclear").nunique())
-        else:
-            st.metric("Authors", "N/A")
-
-    if "Language" in df.columns:
-        st.subheader("Books by Language")
-        language_df = df["Language"].fillna("Unclear").replace("", "Unclear").value_counts().reset_index()
-        language_df.columns = ["Language", "Book Count"]
-        st.dataframe(language_df, use_container_width=True)
-
-    st.subheader("Subject Dashboard")
-    subject_df = get_subject_dashboard(df)
-
-    if subject_df.empty:
-        st.info("No subject information found yet.")
-    else:
-        st.dataframe(subject_df, use_container_width=True)
-
-    st.subheader("Inventory Preview")
-
-    display_columns = [
-        col for col in [
-            "Display Title",
-            "Title",
-            "Original Title",
-            "Author",
-            "Language",
-            "Genre",
-            "Mood Fit",
-            "Extraction Confidence",
-            "Thumbnail",
-        ]
-        if col in df.columns
-    ]
-
-    st.dataframe(df[display_columns], use_container_width=True)
-
-
-def show_all_books():
-    st.header("Literacy Agent - All Books")
-
-    df = load_saved_books()
-
-    if df.empty:
-        st.warning("No saved books found yet.")
-        return
-
-    search_text = st.text_input("Search books", value="")
-
-    filtered_df = df.copy()
-
-    if search_text.strip():
-        search = search_text.lower().strip()
-
-        searchable = (
-            filtered_df.get("Title", "").fillna("").astype(str)
-            + " "
-            + filtered_df.get("Display Title", "").fillna("").astype(str)
-            + " "
-            + filtered_df.get("Original Title", "").fillna("").astype(str)
-            + " "
-            + filtered_df.get("Author", "").fillna("").astype(str)
-            + " "
-            + filtered_df.get("Language", "").fillna("").astype(str)
-            + " "
-            + filtered_df.get("Genre", "").fillna("").astype(str)
-        ).str.lower()
-
-        filtered_df = filtered_df[searchable.str.contains(search, na=False)]
-
-    st.write(f"Showing {len(filtered_df)} book(s).")
-
-    display_columns = [
-        col for col in [
-            "Display Title",
-            "Title",
-            "Original Title",
-            "Translated Title",
-            "Author",
-            "Language",
-            "Script Detected",
-            "Genre",
-            "Mood Fit",
-            "Energy Level",
-            "Country or Region",
-            "Award or Notability Note",
-            "Extraction Confidence",
-            "Needs Review",
-            "Photo Number",
-            "Thumbnail",
-        ]
-        if col in filtered_df.columns
-    ]
-
-    st.dataframe(filtered_df[display_columns], use_container_width=True)
-
-    csv_data = filtered_df.to_csv(index=False)
-
-    st.download_button(
-        label="Download Books CSV",
-        data=csv_data,
-        file_name="books_inventory_export.csv",
-        mime="text/csv",
-    )
-
-
-def show_subject_dashboard_only():
-    st.header("Literacy Agent - Subject Dashboard")
-
-    df = load_saved_books()
-
-    if df.empty:
-        st.warning("No saved books found yet.")
-        return
-
-    subject_df = get_subject_dashboard(df)
-
-    if subject_df.empty:
-        st.info("No subject information found yet.")
-        return
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.metric("Total subjects", len(subject_df))
-
-    with col2:
-        st.metric("Largest subject", subject_df.iloc[0]["Subject"])
-
-    with col3:
-        st.metric("Books in largest subject", subject_df.iloc[0]["Book Count"])
-
-    st.dataframe(subject_df, use_container_width=True)
-
-
-def show_duplicate_check():
-    st.header("Literacy Agent - Duplicate Check")
-
-    df = load_saved_books()
-
-    if df.empty:
-        st.warning("No saved books found yet.")
-        return
-
-    duplicates_df = find_duplicate_books(df)
-
-    if duplicates_df.empty:
-        st.success("No duplicate books found based on Title + Author.")
-        return
-
-    st.warning(f"Found {len(duplicates_df)} duplicate book rows.")
-
-    display_columns = [
-        col for col in [
-            "Title",
-            "Display Title",
-            "Original Title",
-            "Author",
-            "Language",
-            "Genre",
-            "Extraction Confidence",
-            "Photo Number",
-        ]
-        if col in duplicates_df.columns
-    ]
-
-    st.dataframe(duplicates_df[display_columns], use_container_width=True)
 
 
 def is_payment_import_question(question):
@@ -938,6 +520,11 @@ def is_duplicate_check_question(question):
 
 
 def render_home_tile(title, main_value, detail_1, detail_2, background_color, border_color):
+    title = display_value(title)
+    main_value = display_value(main_value)
+    detail_1 = display_value(detail_1)
+    detail_2 = display_value(detail_2)
+
     st.markdown(
         f"""
         <div style="
@@ -951,7 +538,7 @@ def render_home_tile(title, main_value, detail_1, detail_2, background_color, bo
             <div style="font-size: 15px; font-weight: 700; margin-bottom: 8px;">
                 {title}
             </div>
-            <div style="font-size: 28px; font-weight: 800; margin-bottom: 10px;">
+            <div style="font-size: 24px; font-weight: 800; margin-bottom: 10px;">
                 {main_value}
             </div>
             <div style="font-size: 13px; line-height: 1.5;">
@@ -1080,6 +667,18 @@ def route_home_question(home_question):
         )
 
 
+
+def display_value(value, fallback="Data not available"):
+    if value is None:
+        return fallback
+
+    value_text = str(value).strip()
+
+    if value_text == "" or value_text.lower() in ["nan", "none", "not available"]:
+        return fallback
+
+    return value_text
+
 def show_paai_home():
     st.header("PAAI Home")
 
@@ -1093,72 +692,84 @@ def show_paai_home():
 
     st.markdown(
         f"""
-        <div style="font-size: 14px; color: #555; margin-bottom: 14px;">
+        <div style="font-size: 13px; color: #555; margin-bottom: 14px;">
             Mode: <b>{mode}</b>. Quick overview across available PAAI tools.
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    books_df = load_saved_books()
-    grocery_info = load_grocery_history_info()
+    # Books tile - use the same library file as Literacy Agent
+    try:
+        books_df = load_saved_books()
+        st.caption(f"DEBUG Home books path: {get_books_inventory_path()} · rows: {len(books_df)}")
+    except Exception as error:
+        st.caption(f"DEBUG Home books error: {error}")
+        books_df = pd.DataFrame()
+
+    if books_df is None:
+        books_df = pd.DataFrame()
+
+    if books_df.empty:
+        books_main = "Data not available"
+        books_detail_1 = "No saved books found"
+        books_detail_2 = f"Library file: {get_books_inventory_path()}"
+    else:
+        books_main = f"{len(books_df)} books saved"
+
+        if "Language" in books_df.columns:
+            language_count = books_df["Language"].fillna("Unclear").astype(str).nunique()
+            books_detail_1 = f"{language_count} language(s)"
+        else:
+            books_detail_1 = "Language data not available"
+
+        try:
+            duplicate_count = len(find_duplicate_books(books_df))
+        except Exception:
+            duplicate_count = 0
+
+        books_detail_2 = f"{duplicate_count} duplicate row(s)"
+
+    # Grocery tile
+    try:
+        grocery_info = load_grocery_history_info()
+    except Exception:
+        grocery_info = {"has_history": False, "latest_result": {}}
+
+    latest_result = grocery_info.get("latest_result", {}) if isinstance(grocery_info, dict) else {}
+
+    if not grocery_info.get("has_history") or not latest_result:
+        groceries_main = "Data not available"
+        groceries_detail_1 = "No grocery summary available"
+        groceries_detail_2 = "Upload a grocery photo to generate summary"
+        grocery_color = "#fff7ed"
+        grocery_border = "#f97316"
+    else:
+        shopping_count = len(latest_result.get("shopping_list", []))
+        manual_count = len(latest_result.get("manual_check", []))
+
+        if shopping_count == 0 and manual_count == 0:
+            groceries_main = "Data not available"
+            groceries_detail_1 = "No grocery summary available"
+            groceries_detail_2 = "Upload a grocery photo to generate summary"
+        else:
+            groceries_main = f"{shopping_count} suggestions"
+            groceries_detail_1 = f"Last analyzed: {grocery_info.get('last_uploaded_at', 'Data not available')}"
+            groceries_detail_2 = f"{manual_count} manual check(s)"
+
+        grocery_color = "#ecfdf5"
+        grocery_border = "#10b981"
 
     if mode == "Demo":
         col1, col2 = st.columns(2)
     else:
         col1, col2, col3 = st.columns(3)
 
-    # Books tile values
-    if books_df.empty:
-        books_main = "0"
-        books_detail_1 = "No saved books yet"
-        books_detail_2 = "Upload a book photo in Literacy Agent"
-    else:
-        language_count = (
-            books_df["Language"].fillna("Unclear").nunique()
-            if "Language" in books_df.columns
-            else "N/A"
-        )
-        duplicate_count = len(find_duplicate_books(books_df))
-        books_main = f"{len(books_df)} books"
-        books_detail_1 = f"{language_count} language(s)"
-        books_detail_2 = f"{duplicate_count} duplicate row(s)"
-
     with col1:
-        render_home_tile(
-            title="Books",
-            main_value=books_main,
-            detail_1=books_detail_1,
-            detail_2=books_detail_2,
-            background_color="#eff6ff",
-            border_color="#3b82f6",
-        )
-
-    # Grocery tile values
-    if not grocery_info.get("has_history"):
-        groceries_main = "No scan"
-        groceries_detail_1 = "No grocery photo analyzed yet"
-        groceries_detail_2 = "Upload a fridge or pantry photo"
-        grocery_color = "#fff7ed"
-        grocery_border = "#f97316"
-    else:
-        last_uploaded_at = grocery_info["last_uploaded_at"]
-        latest_result = grocery_info["latest_result"]
-        is_stale, age_days = is_grocery_analysis_stale(last_uploaded_at, stale_after_days=3)
-
-        shopping_count = len(latest_result.get("shopping_list", []))
-        manual_count = len(latest_result.get("manual_check", []))
-
-        groceries_main = f"{shopping_count} suggestions"
-        groceries_detail_1 = f"Last analyzed: {last_uploaded_at}"
-        groceries_detail_2 = f"{manual_count} manual check(s)"
-
-        if is_stale:
-            grocery_color = "#fef2f2"
-            grocery_border = "#ef4444"
-        else:
-            grocery_color = "#ecfdf5"
-            grocery_border = "#10b981"
+        st.markdown("### Books")
+        st.metric("Saved books", len(books_df))
+        st.caption(books_detail_1)
+        st.caption(books_detail_2)
 
     with col2:
         render_home_tile(
@@ -1172,14 +783,22 @@ def show_paai_home():
 
     if mode != "Demo":
         with col3:
-            payment_data = get_payment_summary()
-            payment_summary = payment_data["summary"]
+            try:
+                payment_data = get_payment_summary()
+                payment_summary = payment_data["summary"]
+                payment_main = f"{payment_summary['due_soon_count']} due soon"
+                payment_detail_1 = f"{payment_summary['overdue_count']} overdue"
+                payment_detail_2 = f"${payment_summary['total_pending_amount']:,.2f} pending"
+            except Exception:
+                payment_main = "Data not available"
+                payment_detail_1 = "No payment summary available"
+                payment_detail_2 = "Add payment reminders to generate summary"
 
             render_home_tile(
                 title="Payment Reminders",
-                main_value=f"{payment_summary['due_soon_count']} due soon",
-                detail_1=f"{payment_summary['overdue_count']} overdue",
-                detail_2=f"${payment_summary['total_pending_amount']:,.2f} pending",
+                main_value=payment_main,
+                detail_1=payment_detail_1,
+                detail_2=payment_detail_2,
                 background_color="#f5f3ff",
                 border_color="#8b5cf6",
             )
@@ -1188,11 +807,11 @@ def show_paai_home():
 
     st.subheader("Ask PAAI")
 
-    if mode == "Demo":
-        st.caption("Demo mode supports book and grocery questions. Payment and unfinished agents are hidden.")
-        prompt_label = "Ask me about books or grocery list"
-    else:
-        prompt_label = "Ask me about books, payment reminders, or grocery list"
+    prompt_label = (
+        "Ask me about books or grocery list"
+        if mode == "Demo"
+        else "Ask me about books, payment reminders, or grocery list"
+    )
 
     home_question = st.text_input(
         prompt_label,
@@ -1201,22 +820,425 @@ def show_paai_home():
     )
 
     if st.button("Ask PAAI from Home"):
-        if mode == "Demo" and is_payment_question(home_question):
-            st.info("Payment Reminder Agent is disabled in Demo mode.")
-        else:
-            route_home_question(home_question)
-
+        route_home_question(home_question)
 
     st.divider()
 
     st.subheader("Recent Log Updates")
 
-    recent_df = get_recent_activity(limit=5)
+    try:
+        recent_df = get_recent_activity(limit=5)
+    except Exception:
+        recent_df = pd.DataFrame()
 
     if recent_df.empty:
-        st.info("No recent PAAI activity yet.")
+        st.info("Data not available")
     else:
         st.dataframe(recent_df, use_container_width=True)
+
+
+
+
+def load_saved_books():
+    books_path = get_books_inventory_path()
+
+    if not books_path.exists():
+        return pd.DataFrame()
+
+    try:
+        return pd.read_csv(books_path)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+
+
+def save_books_to_library(books):
+    books_path = get_books_inventory_path()
+    books_path.parent.mkdir(exist_ok=True)
+
+    if isinstance(books, dict):
+        books = books.get("books", [])
+
+    if books is None:
+        books = []
+
+    new_books_df = pd.DataFrame(books)
+
+    if new_books_df.empty:
+        return load_saved_books()
+
+    existing_df = load_saved_books()
+
+    if existing_df.empty:
+        combined_df = new_books_df
+    else:
+        combined_df = pd.concat([existing_df, new_books_df], ignore_index=True)
+
+    combined_df.to_csv(books_path, index=False)
+
+    return combined_df
+
+
+def find_duplicate_books(df=None):
+    if df is None:
+        df = load_saved_books()
+
+    if df.empty or "Title" not in df.columns:
+        return pd.DataFrame()
+
+    temp_df = df.copy()
+    temp_df["Title Clean"] = temp_df["Title"].fillna("").astype(str).str.lower().str.strip()
+
+    duplicates_df = temp_df[temp_df.duplicated("Title Clean", keep=False)]
+
+    return duplicates_df.drop(columns=["Title Clean"], errors="ignore")
+
+
+def get_subject_dashboard():
+    df = load_saved_books()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    subject_column = None
+
+    for column in ["Genre", "Online Categories", "Mood Fit", "Language"]:
+        if column in df.columns:
+            subject_column = column
+            break
+
+    if not subject_column:
+        return pd.DataFrame()
+
+    dashboard = (
+        df[subject_column]
+        .fillna("Unclear")
+        .astype(str)
+        .value_counts()
+        .reset_index()
+    )
+
+    dashboard.columns = ["Subject / Category", "Book Count"]
+
+    return dashboard
+
+
+def show_library_summary():
+    st.subheader("Saved Library")
+
+    df = load_saved_books()
+
+    if df.empty:
+        st.info("No saved books found yet.")
+        return
+
+    st.metric("Total books", len(df))
+    st.caption(f"Library file: {get_books_inventory_path()}")
+    st.dataframe(df, use_container_width=True)
+
+
+def show_all_books():
+    st.subheader("All Books")
+
+    df = load_saved_books()
+
+    if df.empty:
+        st.info("No saved books found yet.")
+        return
+
+    display_columns = [
+        col for col in [
+            "Title",
+            "Display Title",
+            "Original Title",
+            "Translated Title",
+            "Author",
+            "Language",
+            "Genre",
+            "Mood Fit",
+            "Energy Level",
+            "Extraction Confidence",
+            "Status",
+        ]
+        if col in df.columns
+    ]
+
+    if display_columns:
+        st.dataframe(df[display_columns], use_container_width=True)
+    else:
+        st.dataframe(df, use_container_width=True)
+
+
+def show_duplicate_check():
+    st.subheader("Duplicate Check")
+
+    duplicates_df = find_duplicate_books()
+
+    if duplicates_df.empty:
+        st.success("No duplicate rows found.")
+        return
+
+    st.warning(f"Found {len(duplicates_df)} possible duplicate row(s).")
+    st.dataframe(duplicates_df, use_container_width=True)
+
+
+def show_subject_dashboard_only():
+    st.subheader("Subject Dashboard")
+
+    dashboard = get_subject_dashboard()
+
+    if dashboard.empty:
+        st.info("No subject or category summary available yet.")
+        return
+
+    st.dataframe(dashboard, use_container_width=True)
+
+
+def show_book_ownership():
+    st.subheader("Check if I Own a Book")
+
+    query = st.text_input(
+        "Enter a book title or author",
+        value="",
+        key="book_ownership_query",
+    )
+
+    if st.button("Check Library", key="check_book_ownership_button"):
+        if not query.strip():
+            st.warning("Please enter a book title or author.")
+            return
+
+        set_paai_data_environment()
+
+        result = check_book_ownership(query)
+
+        if result.get("owned"):
+            st.success(result.get("message", "Book found."))
+        else:
+            st.info(result.get("message", "Book not found."))
+
+        matches = result.get("matches", [])
+
+        if matches:
+            st.dataframe(pd.DataFrame(matches), use_container_width=True)
+
+
+def show_add_book_flow():
+    st.subheader("Add Book from Photo")
+
+    set_paai_data_environment()
+
+    mode = st.session_state.get("paai_mode", "Demo")
+    library_path = get_books_inventory_path()
+
+    st.caption(f"Mode: {mode} · Saving to: {library_path}")
+
+    uploaded_files = st.file_uploader(
+        "Upload one or more book photos",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=True,
+        key=f"book_photo_upload_{mode}",
+    )
+
+    if "pending_extracted_books" not in st.session_state:
+        st.session_state.pending_extracted_books = []
+
+    if st.button("Extract Book Information", key=f"extract_books_button_{mode}"):
+        if not uploaded_files:
+            st.warning("Please upload at least one book photo first.")
+            return
+
+        with st.spinner("Extracting book information..."):
+            result = build_enriched_book_inventory(uploaded_files)
+
+        if isinstance(result, dict) and result.get("error"):
+            st.error(result.get("error"))
+            st.write(result.get("raw_output", ""))
+            return
+
+        if isinstance(result, dict):
+            books = result.get("books", [])
+            summary = result.get("collection_summary", "")
+        elif isinstance(result, list):
+            books = result
+            summary = ""
+        else:
+            books = []
+            summary = ""
+
+        if not books:
+            st.warning("No books were extracted.")
+            return
+
+        st.session_state.pending_extracted_books = books
+        st.session_state.pending_collection_summary = summary
+
+        st.success(f"Extracted {len(books)} book(s). Review below, then save.")
+
+    pending_books = st.session_state.get("pending_extracted_books", [])
+
+    if pending_books:
+        st.subheader("Extracted Book Preview")
+
+        summary = st.session_state.get("pending_collection_summary", "")
+        if summary:
+            st.caption(summary)
+
+        st.dataframe(pd.DataFrame(pending_books), use_container_width=True)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("Save Extracted Books to Library", key=f"save_books_button_{mode}"):
+                saved_df = save_books_to_library(pending_books)
+
+                try:
+                    log_activity(
+                        user_question="Add book from photo",
+                        routed_agent="Literacy Agent",
+                        action="Save books",
+                        result_summary=f"Saved {len(pending_books)} book(s) to {library_path}.",
+                    )
+                except Exception:
+                    pass
+
+                st.success(f"Saved {len(pending_books)} book(s). Total rows: {len(saved_df)}")
+                st.caption(f"Saved to: {library_path}")
+
+                st.session_state.pending_extracted_books = []
+                st.session_state.pending_collection_summary = ""
+
+                st.rerun()
+
+        with col2:
+            if st.button("Clear Preview", key=f"clear_books_button_{mode}"):
+                st.session_state.pending_extracted_books = []
+                st.session_state.pending_collection_summary = ""
+                st.rerun()
+
+
+def show_book_recommendations():
+    st.subheader("Mood-Based Book Recommendations")
+
+    df = load_saved_books()
+
+    if df.empty:
+        st.info("No saved books found yet. Add books first, then try recommendations.")
+        return
+
+    mood = st.text_input(
+        "What mood are you in?",
+        placeholder="Example: empowered, focused, calm, motivated",
+        key="book_recommendation_mood",
+    )
+
+    if st.button("Recommend Books", key="recommend_books_button"):
+        if not mood.strip():
+            st.warning("Please enter a mood first.")
+            return
+
+        books_context = df.to_json(orient="records", force_ascii=False)
+
+        with st.spinner("Finding recommendations from your saved library..."):
+            raw_output = recommend_books_by_mood(mood, books_context)
+
+        try:
+            parsed = json.loads(raw_output)
+            recommendations = parsed.get("recommendations", [])
+        except Exception:
+            st.write(raw_output)
+            return
+
+        if not recommendations:
+            st.info("No recommendations returned.")
+            return
+
+        for rec in recommendations:
+            title = rec.get("title", "Untitled")
+            author = rec.get("author", "Unknown author")
+            why = rec.get("why_this_fits", "")
+            confidence = rec.get("confidence_note", "")
+            language = rec.get("language", "")
+            genre = rec.get("genre_or_subject", "")
+            thumbnail = rec.get("thumbnail", "")
+
+            with st.container():
+                cols = st.columns([1, 4])
+
+                with cols[0]:
+                    if thumbnail:
+                        st.image(thumbnail, width=90)
+
+                with cols[1]:
+                    st.markdown(f"**{title}**")
+                    st.write(f"Author: {author}")
+
+                    if language or genre:
+                        st.caption(f"{language} · {genre}")
+
+                    if why:
+                        st.write(why)
+
+                    if confidence:
+                        st.caption(confidence)
+
+
+def show_literacy_agent_tabs():
+    st.header("Literacy Agent")
+
+    set_paai_data_environment()
+
+    st.caption(
+        f"Mode: {st.session_state.get('paai_mode', 'Demo')} · "
+        f"Library file: {get_books_inventory_path()}"
+    )
+
+    library_tab, mood_tab = st.tabs(["Library", "Mood Recommendations"])
+
+    with library_tab:
+        library_actions = [
+            "View my saved library",
+            "List all books",
+            "Add book from photo",
+            "Check if I own a book",
+            "Duplicate check",
+            "Subject dashboard",
+        ]
+
+        default_action = st.session_state.get("literacy_action", "View my saved library")
+
+        if default_action not in library_actions:
+            default_action = "View my saved library"
+
+        library_action = st.selectbox(
+            "Choose a library action",
+            library_actions,
+            index=library_actions.index(default_action),
+            key="literacy_library_action",
+        )
+
+        st.session_state.literacy_action = library_action
+
+        if library_action == "View my saved library":
+            show_library_summary()
+
+        elif library_action == "List all books":
+            show_all_books()
+
+        elif library_action == "Add book from photo":
+            show_add_book_flow()
+
+        elif library_action == "Check if I own a book":
+            show_book_ownership()
+
+        elif library_action == "Duplicate check":
+            show_duplicate_check()
+
+        elif library_action == "Subject dashboard":
+            show_subject_dashboard_only()
+
+    with mood_tab:
+        show_book_recommendations()
+
 
 
 if agent == "PAAI Home":
@@ -1235,58 +1257,8 @@ elif agent == "Payment Reminder Agent":
         show_payment_agent()
 
 elif agent == "Literacy Agent":
-    st.header("Literacy Agent")
+    show_literacy_agent_tabs()
 
-    literacy_options = [
-        "View my saved library",
-        "List all books",
-        "Subject dashboard",
-        "Duplicate check",
-        "Add book from photo",
-        "Check if I own a book",
-        "Recommend books by mood",
-    ]
-
-    default_literacy_action = st.session_state.get("literacy_action", "View my saved library")
-
-    if default_literacy_action not in literacy_options:
-        default_literacy_action = "View my saved library"
-
-    literacy_action = st.selectbox(
-        "What do you want to do?",
-        literacy_options,
-        index=literacy_options.index(default_literacy_action),
-    )
-
-    st.session_state.literacy_action = literacy_action
-
-    if literacy_action == "View my saved library":
-        show_library_summary()
-
-    elif literacy_action == "List all books":
-        show_all_books()
-
-    elif literacy_action == "Subject dashboard":
-        show_subject_dashboard_only()
-
-    elif literacy_action == "Duplicate check":
-        show_duplicate_check()
-
-    elif literacy_action == "Add book from photo":
-        show_add_book_flow()
-
-    elif literacy_action == "Check if I own a book":
-        book_question = st.text_input("Book question", value=st.session_state.get("routed_question", "Do I own Lean In?"))
-        if st.button("Check Library"):
-            show_book_ownership(book_question)
-
-    elif literacy_action == "Recommend books by mood":
-        recommendation_question = st.text_input(
-            "Mood recommendation question",
-            value=st.session_state.get("routed_question", "Recommend a book for an empowered mood"),
-        )
-        if st.button("Recommend Books"):
-            show_book_recommendations(recommendation_question)
 
 elif agent == "Activity Log":
     st.header("PAAI Activity Log")

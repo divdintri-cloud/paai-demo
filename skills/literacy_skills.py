@@ -1,4 +1,5 @@
 import base64
+import os
 import json
 from io import BytesIO
 
@@ -286,7 +287,7 @@ def check_book_ownership(book_query):
     import pandas as pd
     from pathlib import Path
 
-    inventory_path = Path("data/books_inventory.csv")
+    inventory_path = Path(os.getenv("PAAI_DATA_DIR", "data")) / "books_inventory.csv"
 
     if not inventory_path.exists():
         return {
