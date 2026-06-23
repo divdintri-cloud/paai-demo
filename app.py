@@ -1085,6 +1085,12 @@ def show_paai_home():
 
     mode = st.session_state.get("paai_mode", "Demo")
 
+    if mode == "Demo":
+        st.warning(
+            "Demo Mode: safe sharing version. Book and grocery uploads may be processed by AI. "
+            "Please do not upload sensitive images, IDs, private documents, payment screenshots, or personal records."
+        )
+
     st.markdown(
         f"""
         <div style="font-size: 14px; color: #555; margin-bottom: 14px;">
