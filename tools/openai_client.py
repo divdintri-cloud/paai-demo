@@ -5,7 +5,22 @@ from openai import OpenAI
 
 load_dotenv()
 
-api_key = os.getenv("OPENAI_API_KEY")
+
+def get_openai_api_key():
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    if api_key:
+        return api_key
+
+    try:
+        import streamlit as st
+
+        return st.secrets.get("OPENAI_API_KEY")
+    except Exception:
+        return None
+
+
+api_key = get_openai_api_key()
 
 client = OpenAI(api_key=api_key)
 
