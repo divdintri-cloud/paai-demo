@@ -1,0 +1,528 @@
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+from skills.grocery_skills import extract_grocery_items_from_photo
+from skills.literacy_skills import check_book_ownership, build_enriched_book_inventory, recommend_books_by_mood
+from skills.payment_skills import ask_payment_agent, get_payment_summary
+
+
+st.set_page_config(page_title="PAAI - Personal AI Assistant", layout="wide")
+
+st.title("PAAI - Personal AI Assistant")
+
+st.write(
+    "Ask one question. PAAI will use your saved books, payment reminders, grocery profile, "
+    "and uploaded files/photos when needed."
+)
+
+if "active_flow" not in st.session_state:
+    st.session_state.active_flow = "ask"
+
+
+def is_grocery_question(question):
+    grocery_keywords = [
+        "grocery",
+        "groceries",
+        "fridge",
+        "pantry",
+        "food",
+        "shopping",
+        "shopping list",
+        "restock",
+        "stock",
+        "milk",
+        "eggs",
+        "rice",
+        "atta",
+        "dal",
+        "curd",
+        "yogurt",
+        "banana",
+        "apple",
+        "tomato",
+        "onion",
+        "potato",
+        "vegetable",
+        "snack",
+        "costco",
+        "trader joe",
+        "walmart",
+        "indian grocery",
+        "instacart",
+        "door dash",
+        "doordash",
+    ]
+
+    lower_question = question.lower()
+    return any(keyword in lower_question for keyword in grocery_keywords)
+
+
+def is_payment_question(question):
+    payment_keywords = [
+        "payment",
+        "payments",
+        "bill",
+        "bills",
+        "due",
+        "overdue",
+        "subscription",
+        "subscriptions",
+        "renewal",
+        "paid",
+        "amount",
+        "credit card",
+        "mortgage",
+        "insurance",
+    ]
+
+    lower_question = question.lower()
+    return any(keyword in lower_question for keyword in payment_keywords)
+
+
+def is_book_question(question):
+    book_keywords = [
+        "do i own",
+        "do we own",
+        "book",
+        "books",
+        "library",
+        "author",
+        "read",
+    ]
+
+    lower_question = question.lower()
+    return any(keyword in lower_question for keyword in book_keywords)
+
+
+def clean_book_query(question):
+    cleaned = (
+        question
+        .replace("Do I own", "")
+        .replace("do I own", "")
+        .replace("do i own", "")
+        .replace("Do we own", "")
+        .replace("do we own", "")
+        .replace("Is", "")
+        .replace("is", "")
+        .replace("in my library", "")
+        .replace("in our library", "")
+        .replace("?", "")
+        .strip()
+    )
+
+    return cleaned
+
+
+def show_grocery_result(uploaded_file):
+    if uploaded_file is None:
+        st.warning("Please upload a grocery, fridge, pantry, or receipt photo.")
+        return
+
+    with st.spinner("Analyzing grocery photo..."):
+        result = extract_grocery_items_from_photo(uploaded_file)
+
+    st.subheader("Grocery Summary")
+    st.write(result.get("summary", ""))
+
+    visible_items = result.get("visible_items", [])
+    running_low = result.get("running_low", [])
+    shopping_list = result.get("shopping_list", [])
+    manual_check = result.get("manual_check", [])
+    photo_quality = result.get("photo_quality", {})
+    shopping_message = result.get("shopping_message", "")
+
+    if photo_quality:
+        st.subheader("Photo Quality")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.metric("Photo score", photo_quality.get("score", 0))
+
+        with col2:
+            st.write(photo_quality.get("suggestion", ""))
+
+    if visible_items:
+        st.subheader("Visible Items")
+        st.dataframe(visible_items, use_container_width=True)
+
+    if running_low:
+        st.subheader("Running Low")
+        st.dataframe(running_low, use_container_width=True)
+
+    if shopping_list:
+        st.subheader("Suggested Shopping List")
+        st.dataframe(shopping_list, use_container_width=True)
+
+    if manual_check:
+        st.subheader("Manual Check")
+        st.dataframe(manual_check, use_container_width=True)
+
+    if shopping_message:
+        st.subheader("Copyable Shopping Message")
+        st.text_area(
+            "Shopping list message",
+            value=shopping_message,
+            height=220,
+        )
+
+        st.download_button(
+            label="Download Shopping List",
+            data=shopping_message,
+            file_name="shopping_list.txt",
+            mime="text/plain",
+        )
+
+
+def show_payment_result(question):
+    payment_data = get_payment_summary()
+    summary = payment_data["summary"]
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("Total payments", summary["total_payments"])
+
+    with col2:
+        st.metric("Due soon", summary["due_soon_count"])
+
+    with col3:
+        st.metric("Overdue", summary["overdue_count"])
+
+    with col4:
+        st.metric("Pending amount", f"${summary['total_pending_amount']:,.2f}")
+
+    with st.spinner("Checking payment reminders..."):
+        answer = ask_payment_agent(question)
+
+    st.write(answer)
+
+    with st.expander("Show due soon payments"):
+        due_soon_df = payment_data["due_soon"]
+        if due_soon_df.empty:
+            st.info("No unpaid payments due soon.")
+        else:
+            st.dataframe(due_soon_df, use_container_width=True)
+
+    with st.expander("Show overdue payments"):
+        overdue_df = payment_data["overdue"]
+        if overdue_df.empty:
+            st.success("No overdue unpaid payments.")
+        else:
+            st.dataframe(overdue_df, use_container_width=True)
+
+    with st.expander("Show subscriptions"):
+        subscriptions_df = payment_data["subscriptions"]
+        if subscriptions_df.empty:
+            st.info("No subscriptions found.")
+        else:
+            st.dataframe(subscriptions_df, use_container_width=True)
+
+
+def show_book_result(question):
+    book_query = clean_book_query(question)
+
+    if not book_query:
+        st.warning("Please include the book title or author.")
+        return
+
+    result = check_book_ownership(book_query)
+
+    st.write(result["message"])
+
+    matches = result.get("matches", [])
+
+    if matches:
+        for match in matches:
+            col1, col2 = st.columns([1, 4])
+
+            with col1:
+                thumbnail = match.get("Thumbnail")
+                if thumbnail:
+                    st.image(thumbnail, width=90)
+                else:
+                    st.write("No cover")
+
+            with col2:
+                display_title = (
+                    match.get("Display Title")
+                    or match.get("Original Title")
+                    or match.get("Title")
+                    or "Untitled"
+                )
+
+                st.markdown(f"### {display_title}")
+                st.write(f"**Author:** {match.get('Author', 'Unclear')}")
+                st.write(f"**Language:** {match.get('Language', 'Unclear')}")
+                st.write(f"**Genre:** {match.get('Genre', 'Unclear')}")
+                st.caption(
+                    f"Extraction confidence: {match.get('Extraction Confidence', 'Unclear')}"
+                )
+
+
+BOOKS_DB_PATH = Path("data/books_inventory.csv")
+
+
+def is_add_book_question(question):
+    add_book_keywords = [
+        "add a book",
+        "add book",
+        "add this book",
+        "add books",
+        "upload a book",
+        "upload book",
+        "scan book",
+        "scan books",
+        "save a book",
+        "save this book",
+        "new book",
+        "catalog book",
+        "catalogue book",
+        "inventory book",
+    ]
+
+    lower_question = question.lower()
+    return any(keyword in lower_question for keyword in add_book_keywords)
+
+
+def save_books_to_library(draft_df):
+    BOOKS_DB_PATH.parent.mkdir(exist_ok=True)
+
+    if BOOKS_DB_PATH.exists():
+        existing_df = pd.read_csv(BOOKS_DB_PATH)
+        combined_df = pd.concat([existing_df, draft_df], ignore_index=True)
+    else:
+        combined_df = draft_df.copy()
+
+    if "Title" in combined_df.columns and "Author" in combined_df.columns:
+        combined_df["Title"] = combined_df["Title"].fillna("").astype(str).str.strip()
+        combined_df["Author"] = combined_df["Author"].fillna("").astype(str).str.strip()
+
+        combined_df = combined_df.drop_duplicates(
+            subset=["Title", "Author"],
+            keep="first",
+        )
+
+    combined_df.to_csv(BOOKS_DB_PATH, index=False)
+    return combined_df
+
+
+def show_add_book_result(uploaded_file):
+    st.subheader("Add Book to Library")
+
+    if uploaded_file is None:
+        st.warning(
+            "Please upload a clear photo of the book cover, book stack, or bookshelf section."
+        )
+        st.info(
+            "Tip: one close-up photo with 1 to 10 readable books works better than a wide shelf photo."
+        )
+        return
+
+    with st.spinner("Reading book photo and preparing draft inventory..."):
+        result = build_enriched_book_inventory([uploaded_file])
+
+    if isinstance(result, dict) and "error" in result:
+        st.error(result["error"])
+        st.text(result.get("raw_output", ""))
+        return
+
+    draft_df = pd.DataFrame(result.get("books", []))
+
+    if draft_df.empty:
+        st.warning("I could not detect any books from this photo. Try a clearer close-up photo.")
+        return
+
+    st.success(f"Detected {len(draft_df)} book(s). Review before saving.")
+
+    display_columns = [
+        col for col in [
+            "Display Title",
+            "Title",
+            "Original Title",
+            "Author",
+            "Language",
+            "Genre",
+            "Extraction Confidence",
+            "Needs Review",
+            "Why Uncertain",
+            "Thumbnail",
+        ]
+        if col in draft_df.columns
+    ]
+
+    st.dataframe(draft_df[display_columns], use_container_width=True)
+
+    if st.button("Save Detected Book(s) to My Library"):
+        saved_df = save_books_to_library(draft_df)
+        st.success(f"Saved. Your library now has {len(saved_df)} unique book rows.")
+
+
+
+def is_book_recommendation_question(question):
+    recommendation_keywords = [
+        "suggest a book",
+        "recommend a book",
+        "recommend books",
+        "suggest books",
+        "book based on mood",
+        "based on mood",
+        "what should i read",
+        "what book should i read",
+        "reading recommendation",
+        "mood",
+        "feel like reading",
+    ]
+
+    lower_question = question.lower()
+    return any(keyword in lower_question for keyword in recommendation_keywords)
+
+
+def extract_mood_from_question(question):
+    lower_question = question.lower()
+
+    mood_words = [
+        "motivated",
+        "focused",
+        "reflective",
+        "calm",
+        "happy",
+        "sad",
+        "empowered",
+        "inspired",
+        "career growth",
+        "light",
+        "easy",
+        "deep",
+        "spiritual",
+        "productive",
+    ]
+
+    for mood in mood_words:
+        if mood in lower_question:
+            return mood
+
+    return "Reflective"
+
+
+def show_book_recommendation_result(question):
+    import json
+    import pandas as pd
+    from pathlib import Path
+
+    inventory_path = Path("data/books_inventory.csv")
+
+    if not inventory_path.exists():
+        st.warning(
+            "I do not see a saved book inventory yet. Add books first by uploading book photos."
+        )
+        return
+
+    df = pd.read_csv(inventory_path)
+
+    if df.empty:
+        st.warning("Your saved book inventory is empty. Add books first.")
+        return
+
+    mood = extract_mood_from_question(question)
+
+    st.subheader("Book Recommendations")
+    st.write(f"Using mood: **{mood}**")
+
+    with st.spinner("Finding 3 books from your saved library..."):
+        recommendation_text = recommend_books_by_mood(
+            mood=mood,
+            books_context=df.to_string(index=False),
+        )
+
+    try:
+        recommendation_json = json.loads(recommendation_text)
+        recommendations = recommendation_json.get("recommendations", [])
+
+        if not recommendations:
+            st.info("No recommendations found.")
+            return
+
+        for book in recommendations[:3]:
+            col1, col2 = st.columns([1, 4])
+
+            thumbnail = book.get("thumbnail")
+
+            with col1:
+                if thumbnail:
+                    st.image(thumbnail, width=110)
+                else:
+                    st.write("No cover")
+
+            with col2:
+                st.markdown(f"### {book.get('title', 'Untitled')}")
+                st.write(f"**Author:** {book.get('author', 'Unclear')}")
+                st.write(f"**Language:** {book.get('language', 'Unclear')}")
+                st.write(f"**Subject:** {book.get('genre_or_subject', 'Unclear')}")
+                st.write(f"**Why this fits:** {book.get('why_this_fits', '')}")
+                st.caption(book.get("confidence_note", ""))
+
+    except Exception as error:
+        st.warning("The recommendation response was not in card format. Showing raw response.")
+        st.write(recommendation_text)
+        st.caption(f"Parsing error: {error}")
+
+
+
+question = st.text_input(
+    "Ask PAAI",
+    value="What payments are due soon?",
+)
+
+uploaded_file = st.file_uploader(
+    "Optional: upload a grocery, fridge, pantry, receipt, or book photo",
+    type=["jpg", "jpeg", "png", "csv", "xlsx", "xls", "docx"],
+)
+
+if st.session_state.active_flow == "add_book":
+    st.subheader("Add Book Flow")
+
+    st.write(
+        "Upload a clear photo of a book cover, book stack, or bookshelf section. "
+        "PAAI will detect the book details and let you save them to your library."
+    )
+
+    if uploaded_file is not None:
+        show_add_book_result(uploaded_file)
+    else:
+        st.warning("Upload a book photo using the upload box above.")
+
+    if st.button("Back to Ask PAAI"):
+        st.session_state.active_flow = "ask"
+        st.rerun()
+
+if st.button("Ask PAAI"):
+    if is_grocery_question(question):
+        st.info("PAAI is using Grocery Help.")
+        show_grocery_result(uploaded_file)
+
+    elif is_payment_question(question):
+        st.info("PAAI is using Payment Reminder.")
+        show_payment_result(question)
+
+    elif is_add_book_question(question):
+        st.info("This sounds like you want to add a book to your library.")
+
+        if st.button("Go to Add Book Flow"):
+            st.session_state.active_flow = "add_book"
+            st.rerun()
+
+    elif is_book_recommendation_question(question):
+        st.info("PAAI is using Literacy to recommend books from your saved library.")
+        show_book_recommendation_result(question)
+
+    elif is_book_question(question):
+        st.info("PAAI is using Literacy.")
+        show_book_result(question)
+
+    else:
+        st.info(
+            "I can currently answer questions about groceries, payments, and owned books. "
+            "Try: 'What payments are due soon?', 'Do I own Lean In?', or upload a grocery photo."
+        )

@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+.DS_Store
+
+data/
+app_checkpoint_*.py
+skills/*_checkpoint_*.py
