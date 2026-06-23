@@ -16,7 +16,12 @@ from skills.literacy_skills import (
     build_enriched_book_inventory,
     recommend_books_by_mood,
 )
-from skills.payment_skills import ask_payment_agent, get_payment_summary
+from skills.payment_skills import (
+    ask_payment_agent,
+    get_payment_summary,
+    parse_uploaded_payment_file,
+    save_payment_reminders,
+)
 from skills.activity_log import log_activity, get_recent_activity
 
 
@@ -47,8 +52,14 @@ if "payment_action" not in st.session_state:
 demo_agent_options = [
     "PAAI Home",
     "Literacy Agent",
+    "Payment Reminder Agent",
     "Grocery Help Agent",
     "Activity Log",
+    "Evaluation Dashboard",
+    "Entertainment Agent",
+    "AI Product Manager Role Transition Agent",
+    "Task & Planning Agent",
+    "Travel Agent",
 ]
 
 personal_agent_options = [
@@ -57,6 +68,10 @@ personal_agent_options = [
     "Payment Reminder Agent",
     "Grocery Help Agent",
     "Activity Log",
+    "Entertainment Agent",
+    "AI Product Manager Role Transition Agent",
+    "Task & Planning Agent",
+    "Travel Agent",
 ]
 
 agent_options = demo_agent_options if st.session_state.get("paai_mode", "Demo") == "Demo" else personal_agent_options
@@ -398,6 +413,83 @@ def show_grocery_agent(default_question="What groceries do I need to restock?"):
         show_grocery_result(latest_result)
 
 
+
+def show_payment_upload_flow():
+    st.subheader("Upload Payment Details or Bills")
+
+    mode = st.session_state.get("paai_mode", "Demo")
+
+    if mode == "Demo":
+        st.warning(
+            "Demo mode: do not upload real bills, bank statements, account numbers, "
+            "card numbers, IDs, addresses, or sensitive financial documents."
+        )
+    else:
+        st.warning(
+            "For safety, upload only cleaned payment reminder files. Avoid account numbers, "
+            "card numbers, transaction IDs, full addresses, and sensitive notes."
+        )
+
+    uploaded_file = st.file_uploader(
+        "Upload payment reminders as CSV, Excel, or Word document",
+        type=["csv", "xlsx", "xls", "docx"],
+        key=f"payment_upload_{mode}",
+    )
+
+    if "draft_payment_import" not in st.session_state:
+        st.session_state.draft_payment_import = None
+
+    if uploaded_file:
+        st.write(f"Uploaded file: {uploaded_file.name}")
+
+        if st.button("Preview Payment Reminders", key=f"preview_payment_import_{mode}"):
+            with st.spinner("Reading uploaded file and preparing draft reminders..."):
+                draft_df = parse_uploaded_payment_file(uploaded_file)
+
+            st.session_state.draft_payment_import = draft_df
+
+    if st.session_state.draft_payment_import is not None:
+        draft_df = st.session_state.draft_payment_import
+
+        st.subheader("Draft Payment Reminders")
+        st.write(f"Rows found: {len(draft_df)}")
+        st.dataframe(draft_df, use_container_width=True)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("Save Draft to Payment Reminders", key=f"save_payment_import_{mode}"):
+                saved_df = save_payment_reminders(draft_df)
+
+                try:
+                    log_activity(
+                        user_question="Upload payment details or bills",
+                        routed_agent="Payment Reminder Agent",
+                        action="Save payment reminders",
+                        result_summary=f"Saved {len(draft_df)} uploaded payment reminder row(s).",
+                    )
+                except Exception:
+                    pass
+
+                st.success(f"Saved. You now have {len(saved_df)} payment reminder rows.")
+
+        with col2:
+            if st.button("Clear Draft Import", key=f"clear_payment_import_{mode}"):
+                st.session_state.draft_payment_import = None
+                st.success("Draft import cleared.")
+                st.rerun()
+
+        csv_data = draft_df.to_csv(index=False)
+
+        st.download_button(
+            label="Download Draft Import CSV",
+            data=csv_data,
+            file_name="draft_payment_reminders.csv",
+            mime="text/csv",
+        )
+
+
+
 def show_payment_agent(question="What payments are due soon?"):
     st.header("Payment Reminder Agent")
 
@@ -519,7 +611,7 @@ def is_duplicate_check_question(question):
 
 
 
-def render_home_tile(title, main_value, detail_1, detail_2, background_color, border_color):
+def render_home_tile(title, main_value, detail_1, detail_2, background_color, border_color, emoji=""):
     title = display_value(title)
     main_value = display_value(main_value)
     detail_1 = display_value(detail_1)
@@ -528,20 +620,31 @@ def render_home_tile(title, main_value, detail_1, detail_2, background_color, bo
     st.markdown(
         f"""
         <div style="
-            background-color: {background_color};
-            border-left: 6px solid {border_color};
-            padding: 16px;
-            border-radius: 14px;
-            min-height: 170px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            background: linear-gradient(135deg, {background_color}, #ffffff);
+            border: 1px solid rgba(0,0,0,0.06);
+            border-left: 7px solid {border_color};
+            padding: 18px 18px 16px 18px;
+            border-radius: 18px;
+            min-height: 165px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.08);
         ">
-            <div style="font-size: 15px; font-weight: 700; margin-bottom: 8px;">
-                {title}
+            <div style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+            ">
+                <div style="font-size: 14px; font-weight: 800; color: #374151;">
+                    {title}
+                </div>
+                <div style="font-size: 24px;">
+                    {emoji}
+                </div>
             </div>
-            <div style="font-size: 24px; font-weight: 800; margin-bottom: 10px;">
+            <div style="font-size: 26px; font-weight: 900; color: #111827; margin-bottom: 10px;">
                 {main_value}
             </div>
-            <div style="font-size: 13px; line-height: 1.5;">
+            <div style="font-size: 12.5px; line-height: 1.55; color: #4b5563;">
                 {detail_1}<br>
                 {detail_2}
             </div>
@@ -686,25 +789,23 @@ def show_paai_home():
 
     if mode == "Demo":
         st.warning(
-            "Demo Mode: safe sharing version. Book and grocery uploads may be processed by AI. "
-            "Please do not upload sensitive images, IDs, private documents, payment screenshots, or personal records."
+            "Demo Mode: safe sharing version. Book, payment, and grocery uploads may be processed by AI. "
+            "Please do not upload sensitive images, IDs, private documents, bank statements, payment screenshots, or personal records."
         )
 
     st.markdown(
         f"""
-        <div style="font-size: 13px; color: #555; margin-bottom: 14px;">
+        <div style="font-size: 13px; color: #555; margin-bottom: 16px;">
             Mode: <b>{mode}</b>. Quick overview across available PAAI tools.
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # Books tile - use the same library file as Literacy Agent
+    # Books summary
     try:
         books_df = load_saved_books()
-        st.caption(f"DEBUG Home books path: {get_books_inventory_path()} · rows: {len(books_df)}")
-    except Exception as error:
-        st.caption(f"DEBUG Home books error: {error}")
+    except Exception:
         books_df = pd.DataFrame()
 
     if books_df is None:
@@ -713,9 +814,9 @@ def show_paai_home():
     if books_df.empty:
         books_main = "Data not available"
         books_detail_1 = "No saved books found"
-        books_detail_2 = f"Library file: {get_books_inventory_path()}"
+        books_detail_2 = "Upload a book photo to generate summary"
     else:
-        books_main = f"{len(books_df)} books saved"
+        books_main = f"{len(books_df)} books"
 
         if "Language" in books_df.columns:
             language_count = books_df["Language"].fillna("Unclear").astype(str).nunique()
@@ -730,7 +831,30 @@ def show_paai_home():
 
         books_detail_2 = f"{duplicate_count} duplicate row(s)"
 
-    # Grocery tile
+    # Payment summary
+    try:
+        payment_data = get_payment_summary()
+        payment_summary = payment_data.get("summary", {})
+
+        due_soon_count = payment_summary.get("due_soon_count", 0)
+        overdue_count = payment_summary.get("overdue_count", 0)
+        total_pending_amount = payment_summary.get("total_pending_amount", 0)
+
+        if due_soon_count == 0 and overdue_count == 0 and float(total_pending_amount or 0) == 0:
+            payment_main = "Data not available"
+            payment_detail_1 = "No payment reminders found"
+            payment_detail_2 = "Upload payment details to generate summary"
+        else:
+            payment_main = f"{due_soon_count} due soon"
+            payment_detail_1 = f"{overdue_count} overdue"
+            payment_detail_2 = f"${float(total_pending_amount or 0):,.2f} pending"
+
+    except Exception:
+        payment_main = "Data not available"
+        payment_detail_1 = "No payment summary available"
+        payment_detail_2 = "Upload payment details to generate summary"
+
+    # Grocery summary
     try:
         grocery_info = load_grocery_history_info()
     except Exception:
@@ -752,26 +876,40 @@ def show_paai_home():
             groceries_main = "Data not available"
             groceries_detail_1 = "No grocery summary available"
             groceries_detail_2 = "Upload a grocery photo to generate summary"
+            grocery_color = "#fff7ed"
+            grocery_border = "#f97316"
         else:
             groceries_main = f"{shopping_count} suggestions"
             groceries_detail_1 = f"Last analyzed: {grocery_info.get('last_uploaded_at', 'Data not available')}"
             groceries_detail_2 = f"{manual_count} manual check(s)"
+            grocery_color = "#ecfdf5"
+            grocery_border = "#10b981"
 
-        grocery_color = "#ecfdf5"
-        grocery_border = "#10b981"
-
-    if mode == "Demo":
-        col1, col2 = st.columns(2)
-    else:
-        col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.markdown("### Books")
-        st.metric("Saved books", len(books_df))
-        st.caption(books_detail_1)
-        st.caption(books_detail_2)
+        render_home_tile(
+            title="Books",
+            main_value=books_main,
+            detail_1=books_detail_1,
+            detail_2=books_detail_2,
+            background_color="#eff6ff",
+            border_color="#3b82f6",
+            emoji="📚",
+        )
 
     with col2:
+        render_home_tile(
+            title="Payment Reminders",
+            main_value=payment_main,
+            detail_1=payment_detail_1,
+            detail_2=payment_detail_2,
+            background_color="#f5f3ff",
+            border_color="#8b5cf6",
+            emoji="💳",
+        )
+
+    with col3:
         render_home_tile(
             title="Groceries",
             main_value=groceries_main,
@@ -779,38 +917,15 @@ def show_paai_home():
             detail_2=groceries_detail_2,
             background_color=grocery_color,
             border_color=grocery_border,
+            emoji="🛒",
         )
-
-    if mode != "Demo":
-        with col3:
-            try:
-                payment_data = get_payment_summary()
-                payment_summary = payment_data["summary"]
-                payment_main = f"{payment_summary['due_soon_count']} due soon"
-                payment_detail_1 = f"{payment_summary['overdue_count']} overdue"
-                payment_detail_2 = f"${payment_summary['total_pending_amount']:,.2f} pending"
-            except Exception:
-                payment_main = "Data not available"
-                payment_detail_1 = "No payment summary available"
-                payment_detail_2 = "Add payment reminders to generate summary"
-
-            render_home_tile(
-                title="Payment Reminders",
-                main_value=payment_main,
-                detail_1=payment_detail_1,
-                detail_2=payment_detail_2,
-                background_color="#f5f3ff",
-                border_color="#8b5cf6",
-            )
 
     st.divider()
 
     st.subheader("Ask PAAI")
 
     prompt_label = (
-        "Ask me about books or grocery list"
-        if mode == "Demo"
-        else "Ask me about books, payment reminders, or grocery list"
+        "Ask me about books, payment reminders, or grocery list"
     )
 
     home_question = st.text_input(
@@ -835,7 +950,6 @@ def show_paai_home():
         st.info("Data not available")
     else:
         st.dataframe(recent_df, use_container_width=True)
-
 
 
 
@@ -1241,6 +1355,117 @@ def show_literacy_agent_tabs():
 
 
 
+
+def get_eval_cases_path():
+    return Path("evals") / "paai_eval_cases.csv"
+
+
+def load_eval_cases():
+    eval_path = get_eval_cases_path()
+
+    if not eval_path.exists():
+        return pd.DataFrame(
+            columns=[
+                "Test Name",
+                "User Input",
+                "Expected Agent",
+                "Expected Behavior",
+                "Status",
+                "Notes",
+            ]
+        )
+
+    try:
+        return pd.read_csv(eval_path)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame(
+            columns=[
+                "Test Name",
+                "User Input",
+                "Expected Agent",
+                "Expected Behavior",
+                "Status",
+                "Notes",
+            ]
+        )
+
+
+def save_eval_cases(eval_df):
+    eval_path = get_eval_cases_path()
+    eval_path.parent.mkdir(exist_ok=True)
+    eval_df.to_csv(eval_path, index=False)
+
+
+def show_evaluation_dashboard():
+    st.header("PAAI Evaluation Dashboard")
+
+    st.write(
+        "Use this dashboard to manually test whether PAAI routes correctly, protects demo data, "
+        "and produces the expected behavior."
+    )
+
+    eval_df = load_eval_cases()
+
+    if eval_df.empty:
+        st.info("No eval cases found.")
+        return
+
+    st.subheader("Eval Cases")
+
+    edited_df = st.data_editor(
+        eval_df,
+        use_container_width=True,
+        num_rows="dynamic",
+        column_config={
+            "Status": st.column_config.SelectboxColumn(
+                "Status",
+                options=["Not run", "Pass", "Fail", "Needs review"],
+                required=True,
+            )
+        },
+        key="paai_eval_cases_editor",
+    )
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        pass_count = len(edited_df[edited_df["Status"] == "Pass"]) if "Status" in edited_df.columns else 0
+        st.metric("Pass", pass_count)
+
+    with col2:
+        fail_count = len(edited_df[edited_df["Status"] == "Fail"]) if "Status" in edited_df.columns else 0
+        st.metric("Fail", fail_count)
+
+    with col3:
+        not_run_count = len(edited_df[edited_df["Status"] == "Not run"]) if "Status" in edited_df.columns else 0
+        st.metric("Not run", not_run_count)
+
+    if st.button("Save Eval Results"):
+        save_eval_cases(edited_df)
+
+        try:
+            log_activity(
+                user_question="Update evaluation dashboard",
+                routed_agent="Evaluation Dashboard",
+                action="Save eval results",
+                result_summary=f"Saved {len(edited_df)} evaluation case(s).",
+            )
+        except Exception:
+            pass
+
+        st.success("Eval results saved.")
+
+    st.divider()
+
+    st.subheader("How to use this")
+
+    st.write("1. Open each test case.")
+    st.write("2. Perform the action in PAAI.")
+    st.write("3. Mark the result as Pass, Fail, or Needs review.")
+    st.write("4. Add notes for anything broken or confusing.")
+    st.write("5. Save eval results.")
+
+
 if agent == "PAAI Home":
     show_paai_home()
 
@@ -1249,15 +1474,28 @@ elif agent == "Grocery Help Agent":
     show_grocery_agent()
 
 elif agent == "Payment Reminder Agent":
-    routed_question = st.session_state.get("routed_question", "")
-    if routed_question:
-        st.caption(f"Routed question: {routed_question}")
-        show_payment_agent(routed_question)
-    else:
-        show_payment_agent()
+    st.header("Payment Reminder Agent")
+
+    dashboard_tab, upload_tab = st.tabs(["Dashboard", "Upload Payment Details / Bills"])
+
+    with dashboard_tab:
+        routed_question = st.session_state.get("routed_question", "")
+        if routed_question:
+            st.caption(f"Routed question: {routed_question}")
+            show_payment_agent(routed_question)
+        else:
+            show_payment_agent()
+
+    with upload_tab:
+        show_payment_upload_flow()
+
 
 elif agent == "Literacy Agent":
     show_literacy_agent_tabs()
+
+
+elif agent == "Evaluation Dashboard":
+    show_evaluation_dashboard()
 
 
 elif agent == "Activity Log":

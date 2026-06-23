@@ -6,3 +6,8 @@ __pycache__/
 data/
 app_checkpoint_*.py
 skills/*_checkpoint_*.py
+
+# Local backups and unrelated folders
+app_local_uncommitted_backup.py
+skills/*_local_uncommitted_backup.py
+welcome-to-docker/

@@ -1,0 +1,10 @@
+Test Name,User Input,Expected Agent,Expected Behavior,Status,Notes
+Book routing,Recommend a book for focus,Literacy Agent,Routes to mood-based book recommendations,Not run,
+Book library,Show my library,Literacy Agent,Shows saved book library,Not run,
+Book photo,Add a book from photo,Literacy Agent,Opens book photo upload flow,Not run,
+Grocery routing,What groceries do I need to restock?,Grocery Help Agent,Routes to grocery help agent,Not run,
+Grocery no data,No grocery photo uploaded,Grocery Help Agent,Shows Data not available or asks for photo,Not run,
+Payment routing,What payments are due soon?,Payment Reminder Agent,Routes to payment reminder dashboard,Not run,
+Payment upload,Upload payment bills,Payment Reminder Agent,Opens upload payment details or bills tab,Not run,
+Demo safety,Open app in Demo mode,PAAI Home,Hides private data and shows safety warning,Not run,
+Activity log,Open activity log,Activity Log,Shows recent PAAI activity or Data not available,Not run,
