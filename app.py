@@ -190,7 +190,11 @@ st.sidebar.divider()
 
 
 
+
 # --- PAAI USER ACCOUNT LAYER V1 ---
+if "paai_authenticated" not in st.session_state:
+    st.session_state.paai_authenticated = False
+
 if "active_user_id" not in st.session_state:
     st.session_state.active_user_id = ""
 
@@ -200,39 +204,25 @@ if "active_user_name" not in st.session_state:
 current_mode_for_user = st.session_state.get("paai_mode", "Demo")
 
 if current_mode_for_user == "Demo":
+    st.session_state.paai_authenticated = False
     st.session_state.active_user_id = "demo"
     st.session_state.active_user_name = "Demo User"
+    st.session_state.paai_display_name = "Demo User"
+
     os.environ["PAAI_MODE"] = "Demo"
     os.environ["PAAI_ACTIVE_USER_ID"] = "demo"
     os.environ["PAAI_DATA_DIR"] = "demo_data"
+
     st.sidebar.caption("Active data: Demo")
+
 else:
     st.sidebar.subheader("Account")
 
-    if st.session_state.active_user_id:
-        active_user_dir = get_user_data_dir(st.session_state.active_user_id)
-        os.environ["PAAI_MODE"] = "Personal"
-        os.environ["PAAI_ACTIVE_USER_ID"] = st.session_state.active_user_id
-        os.environ["PAAI_DATA_DIR"] = str(active_user_dir)
+    if not st.session_state.paai_authenticated:
+        st.session_state.active_user_id = ""
+        st.session_state.active_user_name = ""
+        st.session_state.paai_display_name = ""
 
-        st.session_state.paai_display_name = st.session_state.active_user_name or "User"
-
-        st.sidebar.success(f"Signed in as {st.session_state.active_user_name or 'User'}")
-        st.sidebar.caption(f"Active user ID: {st.session_state.active_user_id}")
-
-        if st.sidebar.button("Sign out", use_container_width=True):
-            st.session_state.active_user_id = ""
-            st.session_state.active_user_name = ""
-            st.session_state.paai_display_name = ""
-            os.environ["PAAI_ACTIVE_USER_ID"] = ""
-            os.environ["PAAI_DATA_DIR"] = "data/users/_not_signed_in"
-
-            if hasattr(st, "rerun"):
-                st.rerun()
-            else:
-                st.experimental_rerun()
-
-    else:
         os.environ["PAAI_MODE"] = "Personal"
         os.environ["PAAI_ACTIVE_USER_ID"] = ""
         os.environ["PAAI_DATA_DIR"] = "data/users/_not_signed_in"
@@ -260,9 +250,12 @@ else:
                     account = authenticate_user_by_code(tester_code)
 
                     if account:
+                        st.session_state.paai_authenticated = True
                         st.session_state.active_user_id = account.get("user_id", "")
                         st.session_state.active_user_name = account.get("display_name", "User")
                         st.session_state.paai_display_name = st.session_state.active_user_name
+                        st.session_state.consent_to_save_feedback = account.get("consent_to_save_feedback", False)
+                        st.session_state.consent_to_use_feedback_for_training = account.get("consent_to_use_feedback_for_training", False)
 
                         active_user_dir = get_user_data_dir(st.session_state.active_user_id)
                         os.environ["PAAI_ACTIVE_USER_ID"] = st.session_state.active_user_id
@@ -310,6 +303,44 @@ else:
                     value=False,
                 )
 
+                st.caption("Help PAAI understand how to support you. Do not enter sensitive information.")
+
+                primary_goal = st.text_input(
+                    "Primary goal",
+                    placeholder="Example: Learn AI product management, manage family tasks, improve reading habits",
+                )
+
+                role_or_stage = st.text_input(
+                    "Role / stage",
+                    placeholder="Example: Product manager, parent, student, builder, job seeker",
+                )
+
+                learning_focus = st.text_input(
+                    "Learning focus",
+                    placeholder="Example: AI agents, literacy, career transition, productivity",
+                )
+
+                interests = st.text_area(
+                    "Interests or topics PAAI should remember",
+                    placeholder="Example: books, groceries, payment reminders, AI product strategy",
+                    height=80,
+                )
+
+                preferred_response_style = st.text_input(
+                    "Preferred response style",
+                    placeholder="Example: concise, step-by-step, encouraging, detailed",
+                )
+
+                literacy_goal = st.text_input(
+                    "Literacy goal",
+                    placeholder="Example: track my books, get recommendations, improve reading consistency",
+                )
+
+                privacy_notes = st.text_input(
+                    "Privacy preference",
+                    placeholder="Example: keep personal data local; do not use feedback for training unless approved",
+                )
+
                 submitted = st.form_submit_button("Register", use_container_width=True)
 
                 if submitted:
@@ -323,11 +354,21 @@ else:
                                 optional_email=optional_email,
                                 consent_to_save_feedback=consent_feedback,
                                 consent_to_use_feedback_for_training=consent_training,
+                                primary_goal=primary_goal,
+                                role_or_stage=role_or_stage,
+                                learning_focus=learning_focus,
+                                interests=interests,
+                                preferred_response_style=preferred_response_style,
+                                literacy_goal=literacy_goal,
+                                privacy_notes=privacy_notes,
                             )
 
+                            st.session_state.paai_authenticated = True
                             st.session_state.active_user_id = account["user_id"]
                             st.session_state.active_user_name = account["display_name"]
                             st.session_state.paai_display_name = account["display_name"]
+                            st.session_state.consent_to_save_feedback = account.get("consent_to_save_feedback", False)
+                            st.session_state.consent_to_use_feedback_for_training = account.get("consent_to_use_feedback_for_training", False)
 
                             active_user_dir = get_user_data_dir(st.session_state.active_user_id)
                             os.environ["PAAI_ACTIVE_USER_ID"] = st.session_state.active_user_id
@@ -345,6 +386,31 @@ else:
 
         st.warning("Personal mode requires sign in or registration.")
         st.stop()
+
+    else:
+        active_user_dir = get_user_data_dir(st.session_state.active_user_id)
+
+        os.environ["PAAI_MODE"] = "Personal"
+        os.environ["PAAI_ACTIVE_USER_ID"] = st.session_state.active_user_id
+        os.environ["PAAI_DATA_DIR"] = str(active_user_dir)
+
+        st.session_state.paai_display_name = st.session_state.active_user_name or "User"
+
+        st.sidebar.success(f"Signed in as {st.session_state.active_user_name or 'User'}")
+        st.sidebar.caption(f"Active user ID: {st.session_state.active_user_id}")
+
+        if st.sidebar.button("Sign out", use_container_width=True):
+            st.session_state.paai_authenticated = False
+            st.session_state.active_user_id = ""
+            st.session_state.active_user_name = ""
+            st.session_state.paai_display_name = ""
+            os.environ["PAAI_ACTIVE_USER_ID"] = ""
+            os.environ["PAAI_DATA_DIR"] = "data/users/_not_signed_in"
+
+            if hasattr(st, "rerun"):
+                st.rerun()
+            else:
+                st.experimental_rerun()
 
 st.sidebar.divider()
 
@@ -1185,24 +1251,23 @@ def show_paai_home():
     )
 
     # Books summary
+    books_path = get_books_inventory_path()
+
     try:
-        books_df = load_saved_books()
+        books_df = pd.read_csv(books_path) if books_path.exists() else pd.DataFrame()
     except Exception:
         books_df = pd.DataFrame()
 
-    if books_df is None:
-        books_df = pd.DataFrame()
-
     if books_df.empty:
-        books_main = "Data not available"
-        books_detail_1 = "No saved books found"
-        books_detail_2 = "Upload a book photo to generate summary"
+        books_main = "0 books"
+        books_detail_1 = "No books saved for this user yet"
+        books_detail_2 = "Upload a book photo to start this user's library"
     else:
         books_main = f"{len(books_df)} books"
 
         if "Language" in books_df.columns:
             language_count = books_df["Language"].fillna("Unclear").astype(str).nunique()
-            books_detail_1 = f"{language_count} language(s)"
+            books_detail_1 = f"{language_count} language(s) for this user"
         else:
             books_detail_1 = "Language data not available"
 
@@ -1211,7 +1276,9 @@ def show_paai_home():
         except Exception:
             duplicate_count = 0
 
-        books_detail_2 = f"{duplicate_count} duplicate row(s)"
+        books_detail_2 = f"{duplicate_count} duplicate row(s) for this user"
+
+    st.caption(f"📚 Home books file: `{books_path}`")
 
     # Payment summary
     try:
@@ -1855,12 +1922,12 @@ def show_user_profile():
     st.header("User Profile")
 
     st.caption(
-        "This is PAAI's personalization layer. It stores Divya-specific context locally "
+        "This is PAAI's personalization layer. It stores signed-in user context locally "
         "so PAAI can become more personal over time."
     )
 
     if st.session_state.get("paai_mode", "Demo") == "Demo":
-        st.info("Demo mode uses a generic safe profile. Divya's personal profile is hidden.")
+        st.info("Demo mode uses a generic safe profile. Personal profile data is hidden.")
 
         st.subheader("Demo Profile")
         st.write("**Name:** Demo User")
@@ -2249,6 +2316,80 @@ if st.button("Save Feedback", use_container_width=True):
 from datetime import datetime as paai_datetime
 from tools.literacy_storage_tool import DYNAMIC_BOOKS_INVENTORY_PATH, get_books_inventory_path
 from tools.literacy_storage_tool import get_books_inventory_path
+
+# --- PAAI USER-AWARE BOOK SUMMARY TILE HELPER ---
+def get_user_aware_books_summary_for_tile():
+    books_path = get_books_inventory_path()
+
+    if not books_path.exists():
+        return {
+            "book_count": 0,
+            "detail_1": "No books saved yet",
+            "detail_2": "Upload a book photo to start this user's library",
+            "path": str(books_path),
+        }
+
+    try:
+        books_df = pd.read_csv(books_path)
+    except Exception:
+        return {
+            "book_count": 0,
+            "detail_1": "Book library could not be read",
+            "detail_2": "Try uploading a new book photo",
+            "path": str(books_path),
+        }
+
+    if books_df.empty:
+        return {
+            "book_count": 0,
+            "detail_1": "No books saved yet",
+            "detail_2": "Upload a book photo to start this user's library",
+            "path": str(books_path),
+        }
+
+    book_count = len(books_df)
+
+    language_text = ""
+    genre_text = ""
+
+    if "Language" in books_df.columns:
+        languages = (
+            books_df["Language"]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .replace("", pd.NA)
+            .dropna()
+            .unique()
+            .tolist()
+        )
+        if languages:
+            language_text = f"Languages: {', '.join(sorted(languages)[:3])}"
+
+    if "Genre" in books_df.columns:
+        genres = (
+            books_df["Genre"]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .replace("", pd.NA)
+            .dropna()
+            .unique()
+            .tolist()
+        )
+        if genres:
+            genre_text = f"Genres: {', '.join(sorted(genres)[:3])}"
+
+    detail_1 = f"{book_count} book(s) saved for this user"
+    detail_2 = language_text or genre_text or "User-specific book library is active"
+
+    return {
+        "book_count": book_count,
+        "detail_1": detail_1,
+        "detail_2": detail_2,
+        "path": str(books_path),
+    }
+
 
 # --- PAAI ACTIVE DATA DIR HELPER ---
 def get_paai_active_data_dir():

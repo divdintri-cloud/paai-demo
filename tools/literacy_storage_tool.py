@@ -15,7 +15,7 @@ def get_books_inventory_path():
 class DynamicBooksInventoryPath:
     """
     Path-like object that always resolves to the current active user's books file.
-    This avoids stale import-time paths when Streamlit switches users.
+    Useful when older code expects a variable-like path.
     """
 
     def _path(self):
