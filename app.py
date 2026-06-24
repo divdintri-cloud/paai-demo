@@ -54,7 +54,7 @@ demo_agent_options = [
     "Literacy Agent",
     "Payment Reminder Agent",
     "Grocery Help Agent",
-    "Divya Profile",
+    "User Profile",
     "Activity Log",
     "Evaluation Dashboard",
     "Entertainment Agent",
@@ -1472,7 +1472,7 @@ def load_divya_profile():
     profile_path = get_divya_profile_path()
 
     default_profile = {
-        "name": "Divya",
+        "name": "User",
         "timezone": "America/Chicago",
         "primary_goal": "Transition into an AI Product Manager role",
         "preferred_style": "Step-by-step, practical, beginner-friendly",
@@ -1502,7 +1502,7 @@ def save_divya_profile(profile):
 
 
 def show_divya_profile():
-    st.header("Divya Profile")
+    st.header("User Profile")
 
     st.caption(
         "This is PAAI's personalization layer. It stores Divya-specific context locally "
@@ -1510,21 +1510,21 @@ def show_divya_profile():
     )
 
     if st.session_state.get("paai_mode", "Demo") == "Demo":
-        st.info("Demo mode uses safe generic behavior. Switch to Personal mode to edit Divya's local profile.")
-        profile = load_divya_profile()
+        st.info("Demo mode uses a generic safe profile. Divya's personal profile is hidden.")
 
-        st.subheader("Profile Summary")
-        st.write(f"**Name:** {profile.get('name', 'Divya')}")
-        st.write(f"**Primary goal:** {profile.get('primary_goal', '')}")
-        st.write(f"**Current project:** {profile.get('current_project', '')}")
-        st.write(f"**Preferred style:** {profile.get('preferred_style', '')}")
+        st.subheader("Demo Profile")
+        st.write("**Name:** Demo User")
+        st.write("**Primary goal:** Explore PAAI safely")
+        st.write("**Current project:** PAAI Demo")
+        st.write("**Preferred style:** Clear, helpful, beginner-friendly responses")
+        st.caption("Personal profile data is only available in Personal mode on Divya's local machine.")
         return
 
     profile = load_divya_profile()
 
     st.subheader("Edit Personal Profile")
 
-    name = st.text_input("Name", value=profile.get("name", "Divya"))
+    name = st.text_input("Name", value=profile.get("name", "User"))
     timezone = st.text_input("Timezone", value=profile.get("timezone", "America/Chicago"))
     primary_goal = st.text_area("Primary goal", value=profile.get("primary_goal", ""))
     preferred_style = st.text_area("Preferred response style", value=profile.get("preferred_style", ""))
@@ -1548,20 +1548,20 @@ def show_divya_profile():
         "notes": notes,
     }
 
-    if st.button("Save Divya Profile", use_container_width=True):
+    if st.button("Save User Profile", use_container_width=True):
         save_divya_profile(updated_profile)
 
         try:
             log_activity(
-                user_question="Update Divya Profile",
-                routed_agent="Divya Profile",
+                user_question="Update User Profile",
+                routed_agent="User Profile",
                 action="Save profile",
                 result_summary="Updated local personalization profile.",
             )
         except Exception:
             pass
 
-        st.success("Divya Profile saved.")
+        st.success("User Profile saved.")
 
     st.divider()
 
@@ -1601,7 +1601,7 @@ elif agent == "Evaluation Dashboard":
     show_evaluation_dashboard()
 
 
-elif agent == "Divya Profile":
+elif agent == "User Profile":
     show_divya_profile()
 
 elif agent == "Activity Log":
