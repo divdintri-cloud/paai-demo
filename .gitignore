@@ -15,3 +15,7 @@ welcome-to-docker/
 # Local backup files
 *_backup_*
 evals/*backup*
+
+# Local backup files
+*_backup_*
+evals/*backup*
