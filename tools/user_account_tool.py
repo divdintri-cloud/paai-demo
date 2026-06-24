@@ -66,12 +66,31 @@ def find_account_by_tester_code(tester_code):
     return None
 
 
+def get_account_by_user_id(user_id):
+    account_path = get_user_account_path(user_id)
+
+    if not account_path.exists():
+        return None
+
+    try:
+        return json.loads(account_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
 def register_user(
     display_name,
     tester_code,
     optional_email="",
     consent_to_save_feedback=False,
     consent_to_use_feedback_for_training=False,
+    primary_goal="",
+    role_or_stage="",
+    learning_focus="",
+    interests="",
+    preferred_response_style="",
+    literacy_goal="",
+    privacy_notes="",
 ):
     display_name = str(display_name or "").strip()
     tester_code = normalize_tester_code(tester_code)
@@ -97,6 +116,13 @@ def register_user(
         "tester_code_hash": hash_tester_code(tester_code),
         "consent_to_save_feedback": bool(consent_to_save_feedback),
         "consent_to_use_feedback_for_training": bool(consent_to_use_feedback_for_training),
+        "primary_goal": str(primary_goal or "").strip(),
+        "role_or_stage": str(role_or_stage or "").strip(),
+        "learning_focus": str(learning_focus or "").strip(),
+        "interests": str(interests or "").strip(),
+        "preferred_response_style": str(preferred_response_style or "").strip(),
+        "literacy_goal": str(literacy_goal or "").strip(),
+        "privacy_notes": str(privacy_notes or "").strip(),
         "created_or_updated_at": datetime.now().isoformat(timespec="seconds"),
         "data_dir": str(user_dir),
     }
@@ -107,51 +133,62 @@ def register_user(
     )
 
     profile_path = user_dir / "user_profile.json"
-    if not profile_path.exists():
-        profile_path.write_text(
-            json.dumps(
-                {
-                    "name": display_name,
-                    "timezone": "America/Chicago",
-                    "primary_goal": "",
-                    "preferred_style": "Clear, practical, beginner-friendly",
-                    "privacy_preference": "Keep personal data local",
-                    "current_project": "PAAI",
-                    "career_focus": "",
-                    "learning_focus": "",
-                    "response_preference": "",
-                    "notes": "",
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+    profile = {
+        "name": display_name,
+        "timezone": "America/Chicago",
+        "primary_goal": account["primary_goal"],
+        "preferred_style": account["preferred_response_style"] or "Clear, practical, beginner-friendly",
+        "privacy_preference": account["privacy_notes"] or "Keep personal data local",
+        "current_project": "PAAI",
+        "career_focus": account["role_or_stage"],
+        "learning_focus": account["learning_focus"],
+        "response_preference": account["preferred_response_style"],
+        "literacy_goal": account["literacy_goal"],
+        "interests": account["interests"],
+        "notes": "",
+    }
+
+    if profile_path.exists():
+        try:
+            existing_profile = json.loads(profile_path.read_text(encoding="utf-8"))
+            existing_profile.update({k: v for k, v in profile.items() if v})
+            profile = existing_profile
+        except Exception:
+            pass
+
+    profile_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
 
     context_path = user_dir / "user_context.json"
-    if not context_path.exists():
-        context_path.write_text(
-            json.dumps(
-                {
-                    "current_priorities": [],
-                    "active_projects": ["PAAI"],
-                    "short_term_goals": [],
-                    "long_term_goals": [],
-                    "assistant_should": [
-                        "Be clear",
-                        "Be helpful",
-                        "Protect privacy"
-                    ],
-                    "assistant_should_not": [
-                        "Expose personal details in Demo mode"
-                    ],
-                    "privacy_notes": [
-                        "Personal data should stay local"
-                    ],
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+    context = {
+        "current_priorities": [account["primary_goal"]] if account["primary_goal"] else [],
+        "active_projects": ["PAAI"],
+        "short_term_goals": [account["learning_focus"]] if account["learning_focus"] else [],
+        "long_term_goals": [],
+        "assistant_should": [
+            account["preferred_response_style"] or "Be clear",
+            "Be helpful",
+            "Protect privacy"
+        ],
+        "assistant_should_not": [
+            "Expose personal details in Demo mode"
+        ],
+        "privacy_notes": [
+            account["privacy_notes"] or "Personal data should stay local"
+        ],
+        "role_or_stage": account["role_or_stage"],
+        "interests": account["interests"],
+        "literacy_goal": account["literacy_goal"],
+    }
+
+    if context_path.exists():
+        try:
+            existing_context = json.loads(context_path.read_text(encoding="utf-8"))
+            existing_context.update({k: v for k, v in context.items() if v})
+            context = existing_context
+        except Exception:
+            pass
+
+    context_path.write_text(json.dumps(context, indent=2), encoding="utf-8")
 
     return account
 
@@ -160,7 +197,6 @@ def authenticate_user_by_code(tester_code):
     return find_account_by_tester_code(tester_code)
 
 
-# Backward-compatible wrapper for older app code.
 def create_or_update_user(
     display_name,
     optional_email="",

@@ -29,6 +29,7 @@ from tools.profile_tool import load_user_profile, save_user_profile
 from tools.training_export_tool import load_feedback_log, get_training_ready_feedback, export_training_examples, TRAINING_CSV_PATH, TRAINING_JSONL_PATH
 from tools.tool_registry import list_tools
 from tools.user_account_tool import register_user, authenticate_user_by_code, get_user_data_dir
+from datetime import datetime as paai_datetime
 
 
 # BOOKS_DB_PATH removed for Demo Mode; use get_books_inventory_path() instead
@@ -2234,88 +2235,97 @@ else:
 
 # --- PAAI FEEDBACK WIDGET V1 ---
 st.divider()
+
 st.subheader("Feedback")
 
-st.caption("Help improve PAAI by marking whether this page or response was useful.")
+st.caption(
+    "Help improve PAAI. Feedback is saved with the active user only when consent allows it."
+)
 
-feedback_col1, feedback_col2 = st.columns(2)
-
-if "paai_feedback_choice" not in st.session_state:
-    st.session_state.paai_feedback_choice = ""
-
-with feedback_col1:
-    if st.button("👍 Helpful", use_container_width=True):
-        st.session_state.paai_feedback_choice = "Yes"
-
-with feedback_col2:
-    if st.button("👎 Needs improvement", use_container_width=True):
-        st.session_state.paai_feedback_choice = "No"
+feedback_user_question = st.text_area(
+    "What question or task were you testing?",
+    key="paai_feedback_user_question",
+    height=80,
+)
 
 feedback_notes = st.text_area(
-    "Correction notes",
-    placeholder="What should PAAI improve?",
+    "What should PAAI improve?",
     key="paai_feedback_notes",
+    height=100,
 )
 
 ideal_answer = st.text_area(
-    "Ideal answer",
-    placeholder="Optional: write what the better answer should have been.",
-    key="paai_ideal_answer",
+    "What would a better answer look like?",
+    key="paai_feedback_ideal_answer",
+    height=100,
+)
+
+agent_response_summary = st.text_input(
+    "Agent response summary",
+    key="paai_feedback_agent_response_summary",
+)
+
+use_for_training = st.selectbox(
+    "Use this feedback for training examples?",
+    ["No", "Yes"],
+    index=0,
+    key="paai_feedback_use_for_training",
+)
+
+col_feedback_up, col_feedback_down = st.columns(2)
+
+with col_feedback_up:
+    if st.button("👍 Helpful", use_container_width=True):
+        st.session_state.paai_feedback_choice = "Helpful"
+
+with col_feedback_down:
+    if st.button("👎 Needs improvement", use_container_width=True):
+        st.session_state.paai_feedback_choice = "Needs improvement"
+
+st.caption(
+    f"Current feedback choice: {st.session_state.get('paai_feedback_choice', 'Not selected')}"
 )
 
 if st.button("Save Feedback", use_container_width=True):
-    if not st.session_state.paai_feedback_choice:
-        st.warning("Please select Helpful or Needs improvement first.")
+    feedback_choice = st.session_state.get("paai_feedback_choice", "")
+
+    if not feedback_choice:
+        st.warning("Select Helpful or Needs improvement before saving feedback.")
     else:
-        from datetime import datetime
-        import csv
-        from pathlib import Path
+        feedback_result = save_feedback(
+            mode=st.session_state.get("paai_mode", "Demo"),
+            agent=st.session_state.get("selected_agent", "Unknown"),
+            tester_name=st.session_state.get("active_user_name", ""),
+            user_question=feedback_user_question,
+            helpful=feedback_choice,
+            correction_notes=feedback_notes,
+            ideal_answer=ideal_answer,
+            agent_response_summary=agent_response_summary,
+            use_for_training=use_for_training,
+            active_user_id=st.session_state.get("active_user_id", ""),
+            active_user_name=st.session_state.get("active_user_name", ""),
+            consent_to_save_feedback=st.session_state.get("consent_to_save_feedback", True),
+            consent_to_use_feedback_for_training=st.session_state.get(
+                "consent_to_use_feedback_for_training",
+                False,
+            ),
+        )
 
-        feedback_path = Path("evals") / "paai_feedback_log.csv"
-        feedback_path.parent.mkdir(parents=True, exist_ok=True)
-
-        file_exists = feedback_path.exists()
-
-        with feedback_path.open("a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-
-            if not file_exists or feedback_path.stat().st_size == 0:
-                writer.writerow([
-                    "Timestamp",
-                    "Mode",
-                    "Agent",
-                    "Helpful",
-                    "Correction Notes",
-                    "Ideal Answer",
-                ])
-
-            writer.writerow([
-                datetime.now().isoformat(timespec="seconds"),
-                st.session_state.get("paai_mode", "Demo"),
-                st.session_state.get("selected_agent", "Unknown"),
-                st.session_state.paai_feedback_choice,
-                feedback_notes,
-                ideal_answer,
-            ])
+        if isinstance(feedback_result, dict) and not feedback_result.get("saved", True):
+            st.warning(feedback_result.get("reason", "Feedback was not saved."))
+        else:
+            st.success("Feedback saved with user context.")
 
         try:
-            log_activity(
+            safe_log_activity(
                 user_question="Feedback submitted",
                 routed_agent=st.session_state.get("selected_agent", "Unknown"),
-                action="Save feedback",
-                result_summary=f"Helpful: {st.session_state.paai_feedback_choice}",
+                action="Saved feedback",
+                result_summary=f"Helpful: {feedback_choice}",
             )
         except Exception:
             pass
 
-        st.success("Feedback saved.")
-        st.session_state.paai_feedback_choice = ""
-
-
-# --- PAAI USER GREETING V1 ---
-from datetime import datetime as paai_datetime
-from tools.literacy_storage_tool import DYNAMIC_BOOKS_INVENTORY_PATH, get_books_inventory_path
-from tools.literacy_storage_tool import get_books_inventory_path
 
 # --- PAAI USER-AWARE BOOK SUMMARY TILE HELPER ---
 def get_user_aware_books_summary_for_tile():
