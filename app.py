@@ -28,6 +28,7 @@ from tools.context_tool import load_user_context
 from tools.profile_tool import load_user_profile, save_user_profile
 from tools.training_export_tool import load_feedback_log, get_training_ready_feedback, export_training_examples, TRAINING_CSV_PATH, TRAINING_JSONL_PATH
 from tools.tool_registry import list_tools
+from tools.user_account_tool import list_users, create_or_update_user, get_user_data_dir
 
 
 # BOOKS_DB_PATH removed for Demo Mode; use get_books_inventory_path() instead
@@ -161,6 +162,141 @@ if "literacy_action" not in st.session_state:
 
 if "payment_action" not in st.session_state:
     st.session_state.payment_action = "Payment dashboard"
+
+
+# --- PAAI MODE SWITCH ---
+if "paai_mode" not in st.session_state:
+    st.session_state.paai_mode = "Demo"
+
+st.sidebar.subheader("Mode")
+
+mode_choice = st.sidebar.radio(
+    "Choose how you want to use PAAI",
+    ["Demo", "Personal"],
+    index=["Demo", "Personal"].index(st.session_state.get("paai_mode", "Demo")),
+    horizontal=True,
+    key="paai_mode_radio",
+)
+
+st.session_state.paai_mode = mode_choice
+
+if st.session_state.paai_mode == "Demo":
+    st.sidebar.caption("Demo mode uses generic, safe data.")
+else:
+    st.sidebar.caption("Personal mode uses your local private data.")
+
+st.sidebar.divider()
+
+
+
+# --- PAAI USER ACCOUNT LAYER V1 ---
+if "active_user_id" not in st.session_state:
+    st.session_state.active_user_id = ""
+
+if "active_user_name" not in st.session_state:
+    st.session_state.active_user_name = ""
+
+current_mode_for_user = st.session_state.get("paai_mode", "Demo")
+
+if current_mode_for_user == "Demo":
+    st.session_state.active_user_id = "demo"
+    st.session_state.active_user_name = "Demo User"
+    os.environ["PAAI_DATA_DIR"] = "demo_data"
+    st.sidebar.caption("Active data: Demo")
+else:
+    st.sidebar.subheader("Active User")
+
+    existing_users = list_users()
+
+    if existing_users:
+        label_to_user = {
+            f"{user.get('display_name', 'User')} ({user.get('user_id', 'user')})": user
+            for user in existing_users
+        }
+
+        labels = list(label_to_user.keys())
+
+        current_label_index = 0
+        for index, label in enumerate(labels):
+            if label_to_user[label].get("user_id") == st.session_state.active_user_id:
+                current_label_index = index
+                break
+
+        selected_label = st.sidebar.selectbox(
+            "Select existing user",
+            labels,
+            index=current_label_index,
+            key="paai_existing_user_selector",
+        )
+
+        selected_user = label_to_user[selected_label]
+        st.session_state.active_user_id = selected_user.get("user_id", "")
+        st.session_state.active_user_name = selected_user.get("display_name", "User")
+
+    with st.sidebar.expander("Create / update user", expanded=not bool(existing_users)):
+        new_user_name = st.text_input(
+            "User display name",
+            value=st.session_state.active_user_name if st.session_state.active_user_name != "Demo User" else "",
+            placeholder="Example: Divya, Friend 1",
+            key="paai_new_user_display_name",
+        )
+
+        optional_email = st.text_input(
+            "Optional email",
+            placeholder="Optional",
+            key="paai_new_user_email",
+        )
+
+        consent_feedback = st.checkbox(
+            "Allow PAAI to save my feedback",
+            value=True,
+            key="paai_consent_feedback",
+        )
+
+        consent_training = st.checkbox(
+            "Allow my approved feedback to be used for training examples",
+            value=False,
+            key="paai_consent_training",
+        )
+
+        if st.button("Create / Save User", use_container_width=True):
+            try:
+                account = create_or_update_user(
+                    display_name=new_user_name,
+                    optional_email=optional_email,
+                    consent_to_save_feedback=consent_feedback,
+                    consent_to_use_feedback_for_training=consent_training,
+                )
+
+                st.session_state.active_user_id = account["user_id"]
+                st.session_state.active_user_name = account["display_name"]
+                st.success(f"Active user set to {account['display_name']}.")
+
+            except Exception as error:
+                st.error(f"Could not create user: {error}")
+
+    if not st.session_state.active_user_id:
+        try:
+            account = create_or_update_user(
+                display_name="Local User",
+                consent_to_save_feedback=True,
+                consent_to_use_feedback_for_training=False,
+            )
+            st.session_state.active_user_id = account["user_id"]
+            st.session_state.active_user_name = account["display_name"]
+        except Exception:
+            pass
+
+    if st.session_state.active_user_id:
+        active_user_dir = get_user_data_dir(st.session_state.active_user_id)
+        os.environ["PAAI_DATA_DIR"] = str(active_user_dir)
+
+        if st.session_state.active_user_name:
+            st.session_state.paai_display_name = st.session_state.active_user_name
+
+        st.sidebar.caption(f"Active data: {st.session_state.active_user_id}")
+
+st.sidebar.divider()
 
 demo_agent_options = [
     "PAAI Home",
@@ -1674,7 +1810,7 @@ def show_user_profile():
         st.write("**Primary goal:** Explore PAAI safely")
         st.write("**Current project:** PAAI Demo")
         st.write("**Preferred style:** Clear, helpful, beginner-friendly responses")
-        st.caption("Personal profile data is only available in Personal mode on Divya's local machine.")
+        st.caption("Personal profile data is only available in Personal mode on the local machine.")
         return
 
     profile = load_user_profile()

@@ -1,8 +1,12 @@
 import json
+import os
 from pathlib import Path
 
 
-CONTEXT_PATH = Path("data") / "user_context.json"
+def get_context_path():
+    data_dir = Path(os.getenv("PAAI_DATA_DIR", "data"))
+    return data_dir / "user_context.json"
+
 
 DEFAULT_CONTEXT = {
     "current_priorities": [
@@ -34,13 +38,15 @@ DEFAULT_CONTEXT = {
 
 
 def load_user_context():
-    if not CONTEXT_PATH.exists():
-        CONTEXT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    context_path = get_context_path()
+
+    if not context_path.exists():
+        context_path.parent.mkdir(parents=True, exist_ok=True)
         save_user_context(DEFAULT_CONTEXT)
         return DEFAULT_CONTEXT
 
     try:
-        context = json.loads(CONTEXT_PATH.read_text(encoding="utf-8"))
+        context = json.loads(context_path.read_text(encoding="utf-8"))
     except Exception:
         return DEFAULT_CONTEXT
 
@@ -50,6 +56,7 @@ def load_user_context():
 
 
 def save_user_context(context):
-    CONTEXT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONTEXT_PATH.write_text(json.dumps(context, indent=2), encoding="utf-8")
+    context_path = get_context_path()
+    context_path.parent.mkdir(parents=True, exist_ok=True)
+    context_path.write_text(json.dumps(context, indent=2), encoding="utf-8")
     return context

@@ -41,3 +41,9 @@ data/divya_profile.json
 # Training exports may contain private feedback examples
 evals/training_examples_export.csv
 evals/training_examples_export.jsonl
+
+# Local multi-user data
+data/users/
+data/user_profile.json
+data/user_context.json
+data/divya_profile.json
