@@ -25,6 +25,7 @@ from skills.payment_skills import (
 from skills.activity_log import log_activity, get_recent_activity
 from tools.feedback_tool import save_feedback
 from tools.context_tool import load_user_context
+from tools.profile_tool import load_user_profile, save_user_profile
 
 
 # BOOKS_DB_PATH removed for Demo Mode; use get_books_inventory_path() instead
@@ -900,7 +901,7 @@ def get_paai_display_name():
         return "there"
 
     try:
-        profile = load_divya_profile()
+        profile = load_user_profile()
         return profile.get("name", "there")
     except Exception:
         return "there"
@@ -1653,44 +1654,7 @@ def show_evaluation_dashboard():
 
 
 
-def get_divya_profile_path():
-    return Path("data") / "divya_profile.json"
-
-
-def load_divya_profile():
-    profile_path = get_divya_profile_path()
-
-    default_profile = {
-        "name": "User",
-        "timezone": "America/Chicago",
-        "primary_goal": "Transition into an AI Product Manager role",
-        "preferred_style": "Step-by-step, practical, beginner-friendly",
-        "privacy_preference": "Keep personal data local",
-        "current_project": "PAAI 1.0",
-        "career_focus": "AI Product Manager role transformation",
-        "learning_focus": "LLMs, agents, evals, personalization, product strategy",
-        "response_preference": "Clear instructions with commands, checkpoints, and careful changes",
-        "notes": "PAAI should act as Divya's personal assistant while keeping Demo mode generic and safe.",
-    }
-
-    if not profile_path.exists():
-        profile_path.parent.mkdir(parents=True, exist_ok=True)
-        profile_path.write_text(json.dumps(default_profile, indent=2), encoding="utf-8")
-        return default_profile
-
-    try:
-        return json.loads(profile_path.read_text(encoding="utf-8"))
-    except Exception:
-        return default_profile
-
-
-def save_divya_profile(profile):
-    profile_path = get_divya_profile_path()
-    profile_path.parent.mkdir(parents=True, exist_ok=True)
-    profile_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
-
-
-def show_divya_profile():
+def show_user_profile():
     st.header("User Profile")
 
     st.caption(
@@ -1709,7 +1673,7 @@ def show_divya_profile():
         st.caption("Personal profile data is only available in Personal mode on Divya's local machine.")
         return
 
-    profile = load_divya_profile()
+    profile = load_user_profile()
 
     st.subheader("Edit Personal Profile")
 
@@ -1738,7 +1702,7 @@ def show_divya_profile():
     }
 
     if st.button("Save User Profile", use_container_width=True):
-        save_divya_profile(updated_profile)
+        save_user_profile(updated_profile)
 
         try:
             log_activity(
@@ -1791,7 +1755,7 @@ elif agent == "Evaluation Dashboard":
 
 
 elif agent == "User Profile":
-    show_divya_profile()
+    show_user_profile()
 
 elif agent == "Activity Log":
     st.header("PAAI Activity Log")
