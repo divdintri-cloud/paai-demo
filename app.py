@@ -29,6 +29,114 @@ from skills.activity_log import log_activity, get_recent_activity
 
 st.set_page_config(page_title="PAAI - Personal AI Assistant", layout="wide")
 
+
+# --- PAAI COMPACT UI V1 ---
+st.markdown(
+    """
+    <style>
+    /* General compact layout */
+    .block-container {
+        padding-top: 1.2rem !important;
+        padding-left: 1.2rem !important;
+        padding-right: 1.2rem !important;
+        max-width: 100% !important;
+    }
+
+    /* Headings */
+    h1 {
+        font-size: 1.55rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+
+    h2 {
+        font-size: 1.25rem !important;
+        margin-bottom: 0.45rem !important;
+    }
+
+    h3 {
+        font-size: 1.05rem !important;
+        margin-bottom: 0.35rem !important;
+    }
+
+    p, li, label, div {
+        font-size: 0.92rem;
+    }
+
+    /* Sidebar compact spacing */
+    section[data-testid="stSidebar"] {
+        min-width: 250px !important;
+        max-width: 280px !important;
+    }
+
+    section[data-testid="stSidebar"] div {
+        font-size: 0.9rem;
+    }
+
+    /* Buttons */
+    .stButton button {
+        padding: 0.35rem 0.55rem !important;
+        font-size: 0.9rem !important;
+        min-height: 2.1rem !important;
+    }
+
+    /* Inputs */
+    textarea, input {
+        font-size: 0.9rem !important;
+    }
+
+    /* Metrics */
+    [data-testid="stMetricValue"] {
+        font-size: 1.25rem !important;
+    }
+
+    [data-testid="stMetricLabel"] {
+        font-size: 0.82rem !important;
+    }
+
+    /* Expanders */
+    details {
+        font-size: 0.9rem !important;
+    }
+
+    /* Dataframes / tables */
+    [data-testid="stDataFrame"] {
+        font-size: 0.82rem !important;
+    }
+
+    /* Mobile/small screen */
+    @media (max-width: 900px) {
+        .block-container {
+            padding-top: 0.8rem !important;
+            padding-left: 0.7rem !important;
+            padding-right: 0.7rem !important;
+        }
+
+        h1 {
+            font-size: 1.35rem !important;
+        }
+
+        h2 {
+            font-size: 1.12rem !important;
+        }
+
+        h3 {
+            font-size: 1rem !important;
+        }
+
+        p, li, label, div {
+            font-size: 0.86rem;
+        }
+
+        .stButton button {
+            font-size: 0.84rem !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 st.title("PAAI - Personal AI Assistant")
 st.write(
     "Choose an agent from the dropdown, or ask PAAI and it will route your question to the right specialist."
@@ -779,7 +887,122 @@ def display_value(value, fallback="Data not available"):
 
     return value_text
 
+
+# --- PAAI HOME PERSONALIZATION V1 ---
+def load_user_context():
+    context_path = Path("data") / "user_context.json"
+
+    default_context = {
+        "current_priorities": [
+            "Use PAAI safely",
+            "Explore available agents",
+            "Give useful feedback"
+        ],
+        "active_projects": [
+            "PAAI"
+        ],
+        "short_term_goals": [
+            "Test PAAI",
+            "Review agent behavior",
+            "Collect feedback"
+        ],
+        "assistant_should": [
+            "Be clear",
+            "Be helpful",
+            "Protect privacy"
+        ],
+        "assistant_should_not": [
+            "Expose personal details in Demo mode"
+        ],
+    }
+
+    if not context_path.exists():
+        return default_context
+
+    try:
+        return json.loads(context_path.read_text(encoding="utf-8"))
+    except Exception:
+        return default_context
+
+
+def get_paai_display_name():
+    display_name = st.session_state.get("paai_display_name", "").strip()
+    if display_name:
+        return display_name
+
+    if st.session_state.get("paai_mode", "Demo") == "Demo":
+        return "there"
+
+    try:
+        profile = load_divya_profile()
+        return profile.get("name", "there")
+    except Exception:
+        return "there"
+
+
+def get_paai_home_recommendations():
+    mode = st.session_state.get("paai_mode", "Demo")
+
+    if mode == "Demo":
+        return [
+            "Explore each agent from the sidebar.",
+            "Try one book, grocery, or payment question.",
+            "Use thumbs feedback after testing.",
+            "Avoid uploading private or sensitive files in Demo mode.",
+        ]
+
+    context = load_user_context()
+    priorities = context.get("current_priorities", [])
+    short_term_goals = context.get("short_term_goals", [])
+
+    recommendations = []
+
+    for item in priorities[:2]:
+        recommendations.append(item)
+
+    for item in short_term_goals[:2]:
+        if item not in recommendations:
+            recommendations.append(item)
+
+    if not recommendations:
+        recommendations = [
+            "Review eval test cases.",
+            "Collect useful feedback.",
+            "Update user context.",
+            "Continue building PAAI as a portfolio project.",
+        ]
+
+    return recommendations[:4]
+
+
+def show_personalized_home_intro():
+    mode = st.session_state.get("paai_mode", "Demo")
+    display_name = get_paai_display_name()
+
+    try:
+        wish = get_time_based_wish()
+    except Exception:
+        wish = "Welcome"
+
+    if mode == "Demo":
+        st.markdown(f"### {wish}, {display_name} 👋")
+        st.caption("Welcome to PAAI Demo. This mode uses generic safe context and does not show personal profile details.")
+    else:
+        st.markdown(f"### {wish}, {display_name} 👋")
+        st.caption("Here’s your PAAI 1.0 personal command center.")
+
+    recommendations = get_paai_home_recommendations()
+
+    with st.expander("Recommended next actions", expanded=True):
+        for index, item in enumerate(recommendations, start=1):
+            st.write(f"{index}. {item}")
+
+
+
 def show_paai_home():
+    show_personalized_home_intro()
+    st.divider()
+
     st.header("PAAI Home")
 
     mode = st.session_state.get("paai_mode", "Demo")

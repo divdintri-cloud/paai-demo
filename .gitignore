@@ -19,3 +19,11 @@ evals/*backup*
 # Local backup files
 *_backup_*
 evals/*backup*
+
+# Personal context
+data/user_context.json
+data/divya_profile.json
+
+# Personal context
+data/user_context.json
+data/divya_profile.json
