@@ -24,6 +24,7 @@ from skills.payment_skills import (
 )
 from skills.activity_log import log_activity, get_recent_activity
 from tools.feedback_tool import save_feedback
+from tools.context_tool import load_user_context
 
 
 # BOOKS_DB_PATH removed for Demo Mode; use get_books_inventory_path() instead
@@ -890,42 +891,6 @@ def display_value(value, fallback="Data not available"):
 
 
 # --- PAAI HOME PERSONALIZATION V1 ---
-def load_user_context():
-    context_path = Path("data") / "user_context.json"
-
-    default_context = {
-        "current_priorities": [
-            "Use PAAI safely",
-            "Explore available agents",
-            "Give useful feedback"
-        ],
-        "active_projects": [
-            "PAAI"
-        ],
-        "short_term_goals": [
-            "Test PAAI",
-            "Review agent behavior",
-            "Collect feedback"
-        ],
-        "assistant_should": [
-            "Be clear",
-            "Be helpful",
-            "Protect privacy"
-        ],
-        "assistant_should_not": [
-            "Expose personal details in Demo mode"
-        ],
-    }
-
-    if not context_path.exists():
-        return default_context
-
-    try:
-        return json.loads(context_path.read_text(encoding="utf-8"))
-    except Exception:
-        return default_context
-
-
 def get_paai_display_name():
     display_name = st.session_state.get("paai_display_name", "").strip()
     if display_name:
