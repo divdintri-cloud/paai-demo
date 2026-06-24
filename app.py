@@ -27,6 +27,7 @@ from tools.feedback_tool import save_feedback
 from tools.context_tool import load_user_context
 from tools.profile_tool import load_user_profile, save_user_profile
 from tools.training_export_tool import load_feedback_log, get_training_ready_feedback, export_training_examples, TRAINING_CSV_PATH, TRAINING_JSONL_PATH
+from tools.tool_registry import list_tools
 
 
 # BOOKS_DB_PATH removed for Demo Mode; use get_books_inventory_path() instead
@@ -168,6 +169,7 @@ demo_agent_options = [
     "Grocery Help Agent",
     "User Profile",
     "Activity Log",
+    "MCP Tool Registry",
     "Training Dataset Export",
     "Evaluation Dashboard",
     "Entertainment Agent",
@@ -1841,6 +1843,70 @@ def show_training_dataset_export():
             st.button("Download JSONL", disabled=True, use_container_width=True)
 
 
+
+def show_mcp_tool_registry():
+    st.header("MCP Tool Registry")
+
+    st.caption(
+        "This screen shows PAAI's MCP-style internal tool layer. "
+        "These tools separate app UI from reusable actions like loading profile context, "
+        "saving feedback, and exporting training examples."
+    )
+
+    tools = list_tools()
+
+    if not tools:
+        st.info("No tools registered yet.")
+        return
+
+    tool_df = pd.DataFrame(tools)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("Registered tools", len(tool_df))
+
+    with col2:
+        safe_count = len(tool_df[tool_df["safe_in_demo"] == "Yes"]) if "safe_in_demo" in tool_df.columns else 0
+        st.metric("Demo-safe tools", safe_count)
+
+    with col3:
+        available_count = len(tool_df[tool_df["status"] == "Available"]) if "status" in tool_df.columns else 0
+        st.metric("Available", available_count)
+
+    st.divider()
+
+    st.subheader("Tool Catalog")
+
+    st.dataframe(
+        tool_df[
+            [
+                "name",
+                "description",
+                "status",
+                "safe_in_demo",
+                "connects_to",
+                "output_type",
+            ]
+        ],
+        use_container_width=True,
+    )
+
+    st.divider()
+
+    st.subheader("How PAAI uses this")
+
+    st.write("1. The UI calls a named tool.")
+    st.write("2. The tool handles local data or actions.")
+    st.write("3. The result comes back in a standard shape.")
+    st.write("4. Later, this can evolve into a real MCP server or external integrations.")
+
+    st.info(
+        "For now this is an MCP-style internal registry, not a full external MCP server. "
+        "That is the correct level for PAAI 1.1."
+    )
+
+
 if agent == "PAAI Home":
     show_paai_home()
 
@@ -1868,6 +1934,9 @@ elif agent == "Payment Reminder Agent":
 elif agent == "Literacy Agent":
     show_literacy_agent_tabs()
 
+
+elif agent == "MCP Tool Registry":
+    show_mcp_tool_registry()
 
 elif agent == "Training Dataset Export":
     show_training_dataset_export()
