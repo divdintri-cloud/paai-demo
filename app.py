@@ -26,6 +26,7 @@ from skills.activity_log import log_activity, get_recent_activity
 from tools.feedback_tool import save_feedback
 from tools.context_tool import load_user_context
 from tools.profile_tool import load_user_profile, save_user_profile
+from tools.training_export_tool import load_feedback_log, get_training_ready_feedback, export_training_examples, TRAINING_CSV_PATH, TRAINING_JSONL_PATH
 
 
 # BOOKS_DB_PATH removed for Demo Mode; use get_books_inventory_path() instead
@@ -167,6 +168,7 @@ demo_agent_options = [
     "Grocery Help Agent",
     "User Profile",
     "Activity Log",
+    "Training Dataset Export",
     "Evaluation Dashboard",
     "Entertainment Agent",
     "AI Product Manager Role Transition Agent",
@@ -1722,6 +1724,123 @@ def show_user_profile():
     st.json(updated_profile)
 
 
+
+def show_training_dataset_export():
+    st.header("Training Dataset Export")
+
+    st.caption(
+        "Export training-ready examples from feedback rows marked 'Use For Training = Yes'. "
+        "Only use examples that do not contain private or sensitive information."
+    )
+
+    feedback_df = load_feedback_log()
+    training_df = get_training_ready_feedback()
+
+    total_feedback = len(feedback_df)
+    training_yes_count = 0
+
+    if not feedback_df.empty and "Use For Training" in feedback_df.columns:
+        training_yes_count = len(
+            feedback_df[
+                feedback_df["Use For Training"].astype(str).str.lower().str.strip() == "yes"
+            ]
+        )
+
+    ready_count = len(training_df)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("Total feedback rows", total_feedback)
+
+    with col2:
+        st.metric("Marked for training", training_yes_count)
+
+    with col3:
+        st.metric("Ready to export", ready_count)
+
+    st.divider()
+
+    st.subheader("Export rules")
+
+    st.write("A row is export-ready only when:")
+    st.write("1. Use For Training = Yes")
+    st.write("2. User Question is filled in")
+    st.write("3. Ideal Answer is filled in")
+
+    st.warning(
+        "Before using exported examples for fine-tuning, manually review them and remove private, sensitive, or low-quality examples."
+    )
+
+    if ready_count > 0:
+        st.subheader("Training-ready preview")
+        st.dataframe(
+            training_df[
+                [
+                    "Agent",
+                    "User Question",
+                    "Ideal Answer",
+                    "Correction Notes",
+                    "Agent Response Summary",
+                    "Helpful",
+                    "Mode",
+                    "Timestamp",
+                ]
+            ],
+            use_container_width=True,
+        )
+    else:
+        st.info(
+            "No rows are ready yet. Add feedback with Use For Training = Yes and fill in Ideal Answer."
+        )
+
+    st.divider()
+
+    if st.button("Export Training Dataset", use_container_width=True):
+        result = export_training_examples()
+
+        try:
+            log_activity(
+                user_question="Export training dataset",
+                routed_agent="Training Dataset Export",
+                action="Export training examples",
+                result_summary=f"Exported {result.get('exported_count', 0)} training example(s).",
+            )
+        except Exception:
+            pass
+
+        st.success(f"Exported {result.get('exported_count', 0)} training example(s).")
+
+    csv_path = TRAINING_CSV_PATH
+    jsonl_path = TRAINING_JSONL_PATH
+
+    download_col1, download_col2 = st.columns(2)
+
+    with download_col1:
+        if csv_path.exists():
+            st.download_button(
+                "Download CSV",
+                data=csv_path.read_bytes(),
+                file_name="training_examples_export.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        else:
+            st.button("Download CSV", disabled=True, use_container_width=True)
+
+    with download_col2:
+        if jsonl_path.exists():
+            st.download_button(
+                "Download JSONL",
+                data=jsonl_path.read_bytes(),
+                file_name="training_examples_export.jsonl",
+                mime="application/jsonl",
+                use_container_width=True,
+            )
+        else:
+            st.button("Download JSONL", disabled=True, use_container_width=True)
+
+
 if agent == "PAAI Home":
     show_paai_home()
 
@@ -1749,6 +1868,9 @@ elif agent == "Payment Reminder Agent":
 elif agent == "Literacy Agent":
     show_literacy_agent_tabs()
 
+
+elif agent == "Training Dataset Export":
+    show_training_dataset_export()
 
 elif agent == "Evaluation Dashboard":
     show_evaluation_dashboard()
