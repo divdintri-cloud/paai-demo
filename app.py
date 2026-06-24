@@ -28,7 +28,7 @@ from tools.context_tool import load_user_context
 from tools.profile_tool import load_user_profile, save_user_profile
 from tools.training_export_tool import load_feedback_log, get_training_ready_feedback, export_training_examples, TRAINING_CSV_PATH, TRAINING_JSONL_PATH
 from tools.tool_registry import list_tools
-from tools.user_account_tool import list_users, create_or_update_user, get_user_data_dir
+from tools.user_account_tool import register_user, authenticate_user_by_code, get_user_data_dir
 
 
 # BOOKS_DB_PATH removed for Demo Mode; use get_books_inventory_path() instead
@@ -189,6 +189,7 @@ st.sidebar.divider()
 
 
 
+
 # --- PAAI USER ACCOUNT LAYER V1 ---
 if "active_user_id" not in st.session_state:
     st.session_state.active_user_id = ""
@@ -201,102 +202,152 @@ current_mode_for_user = st.session_state.get("paai_mode", "Demo")
 if current_mode_for_user == "Demo":
     st.session_state.active_user_id = "demo"
     st.session_state.active_user_name = "Demo User"
+    os.environ["PAAI_MODE"] = "Demo"
+    os.environ["PAAI_ACTIVE_USER_ID"] = "demo"
     os.environ["PAAI_DATA_DIR"] = "demo_data"
     st.sidebar.caption("Active data: Demo")
 else:
-    st.sidebar.subheader("Active User")
-
-    existing_users = list_users()
-
-    if existing_users:
-        label_to_user = {
-            f"{user.get('display_name', 'User')} ({user.get('user_id', 'user')})": user
-            for user in existing_users
-        }
-
-        labels = list(label_to_user.keys())
-
-        current_label_index = 0
-        for index, label in enumerate(labels):
-            if label_to_user[label].get("user_id") == st.session_state.active_user_id:
-                current_label_index = index
-                break
-
-        selected_label = st.sidebar.selectbox(
-            "Select existing user",
-            labels,
-            index=current_label_index,
-            key="paai_existing_user_selector",
-        )
-
-        selected_user = label_to_user[selected_label]
-        st.session_state.active_user_id = selected_user.get("user_id", "")
-        st.session_state.active_user_name = selected_user.get("display_name", "User")
-
-    with st.sidebar.expander("Create / update user", expanded=not bool(existing_users)):
-        new_user_name = st.text_input(
-            "User display name",
-            value=st.session_state.active_user_name if st.session_state.active_user_name != "Demo User" else "",
-            placeholder="Example: Divya, Friend 1",
-            key="paai_new_user_display_name",
-        )
-
-        optional_email = st.text_input(
-            "Optional email",
-            placeholder="Optional",
-            key="paai_new_user_email",
-        )
-
-        consent_feedback = st.checkbox(
-            "Allow PAAI to save my feedback",
-            value=True,
-            key="paai_consent_feedback",
-        )
-
-        consent_training = st.checkbox(
-            "Allow my approved feedback to be used for training examples",
-            value=False,
-            key="paai_consent_training",
-        )
-
-        if st.button("Create / Save User", use_container_width=True):
-            try:
-                account = create_or_update_user(
-                    display_name=new_user_name,
-                    optional_email=optional_email,
-                    consent_to_save_feedback=consent_feedback,
-                    consent_to_use_feedback_for_training=consent_training,
-                )
-
-                st.session_state.active_user_id = account["user_id"]
-                st.session_state.active_user_name = account["display_name"]
-                st.success(f"Active user set to {account['display_name']}.")
-
-            except Exception as error:
-                st.error(f"Could not create user: {error}")
-
-    if not st.session_state.active_user_id:
-        try:
-            account = create_or_update_user(
-                display_name="Local User",
-                consent_to_save_feedback=True,
-                consent_to_use_feedback_for_training=False,
-            )
-            st.session_state.active_user_id = account["user_id"]
-            st.session_state.active_user_name = account["display_name"]
-        except Exception:
-            pass
+    st.sidebar.subheader("Account")
 
     if st.session_state.active_user_id:
         active_user_dir = get_user_data_dir(st.session_state.active_user_id)
+        os.environ["PAAI_MODE"] = "Personal"
+        os.environ["PAAI_ACTIVE_USER_ID"] = st.session_state.active_user_id
         os.environ["PAAI_DATA_DIR"] = str(active_user_dir)
 
-        if st.session_state.active_user_name:
-            st.session_state.paai_display_name = st.session_state.active_user_name
+        st.session_state.paai_display_name = st.session_state.active_user_name or "User"
 
-        st.sidebar.caption(f"Active data: {st.session_state.active_user_id}")
+        st.sidebar.success(f"Signed in as {st.session_state.active_user_name or 'User'}")
+        st.sidebar.caption(f"Active user ID: {st.session_state.active_user_id}")
+
+        if st.sidebar.button("Sign out", use_container_width=True):
+            st.session_state.active_user_id = ""
+            st.session_state.active_user_name = ""
+            st.session_state.paai_display_name = ""
+            os.environ["PAAI_ACTIVE_USER_ID"] = ""
+            os.environ["PAAI_DATA_DIR"] = "data/users/_not_signed_in"
+
+            if hasattr(st, "rerun"):
+                st.rerun()
+            else:
+                st.experimental_rerun()
+
+    else:
+        os.environ["PAAI_MODE"] = "Personal"
+        os.environ["PAAI_ACTIVE_USER_ID"] = ""
+        os.environ["PAAI_DATA_DIR"] = "data/users/_not_signed_in"
+
+        st.sidebar.info("Register or sign in to use Personal mode.")
+
+        account_action = st.sidebar.radio(
+            "Account action",
+            ["Sign in", "Register"],
+            horizontal=True,
+            key="paai_account_action",
+        )
+
+        if account_action == "Sign in":
+            with st.sidebar.form("paai_sign_in_form"):
+                tester_code = st.text_input(
+                    "Tester code",
+                    type="password",
+                    placeholder="Enter your tester code",
+                )
+
+                submitted = st.form_submit_button("Sign in", use_container_width=True)
+
+                if submitted:
+                    account = authenticate_user_by_code(tester_code)
+
+                    if account:
+                        st.session_state.active_user_id = account.get("user_id", "")
+                        st.session_state.active_user_name = account.get("display_name", "User")
+                        st.session_state.paai_display_name = st.session_state.active_user_name
+
+                        active_user_dir = get_user_data_dir(st.session_state.active_user_id)
+                        os.environ["PAAI_ACTIVE_USER_ID"] = st.session_state.active_user_id
+                        os.environ["PAAI_DATA_DIR"] = str(active_user_dir)
+
+                        st.success("Signed in.")
+
+                        if hasattr(st, "rerun"):
+                            st.rerun()
+                        else:
+                            st.experimental_rerun()
+                    else:
+                        st.error("Invalid tester code.")
+
+        else:
+            with st.sidebar.form("paai_register_form"):
+                display_name = st.text_input(
+                    "Display name",
+                    placeholder="Example: Prabha",
+                )
+
+                optional_email = st.text_input(
+                    "Optional email",
+                    placeholder="Optional",
+                )
+
+                tester_code = st.text_input(
+                    "Create tester code",
+                    type="password",
+                    placeholder="Minimum 4 characters",
+                )
+
+                confirm_tester_code = st.text_input(
+                    "Confirm tester code",
+                    type="password",
+                )
+
+                consent_feedback = st.checkbox(
+                    "Allow PAAI to save my feedback",
+                    value=True,
+                )
+
+                consent_training = st.checkbox(
+                    "Allow my approved feedback to be used for training examples",
+                    value=False,
+                )
+
+                submitted = st.form_submit_button("Register", use_container_width=True)
+
+                if submitted:
+                    if tester_code != confirm_tester_code:
+                        st.error("Tester codes do not match.")
+                    else:
+                        try:
+                            account = register_user(
+                                display_name=display_name,
+                                tester_code=tester_code,
+                                optional_email=optional_email,
+                                consent_to_save_feedback=consent_feedback,
+                                consent_to_use_feedback_for_training=consent_training,
+                            )
+
+                            st.session_state.active_user_id = account["user_id"]
+                            st.session_state.active_user_name = account["display_name"]
+                            st.session_state.paai_display_name = account["display_name"]
+
+                            active_user_dir = get_user_data_dir(st.session_state.active_user_id)
+                            os.environ["PAAI_ACTIVE_USER_ID"] = st.session_state.active_user_id
+                            os.environ["PAAI_DATA_DIR"] = str(active_user_dir)
+
+                            st.success("Account registered.")
+
+                            if hasattr(st, "rerun"):
+                                st.rerun()
+                            else:
+                                st.experimental_rerun()
+
+                        except Exception as error:
+                            st.error(f"Could not register: {error}")
+
+        st.warning("Personal mode requires sign in or registration.")
+        st.stop()
 
 st.sidebar.divider()
+
 
 demo_agent_options = [
     "PAAI Home",
@@ -1083,6 +1134,10 @@ def get_paai_home_recommendations():
 
 
 def show_personalized_home_intro():
+    if st.session_state.get("paai_mode", "Demo") == "Demo":
+        st.info("Demo mode is active. You can explore PAAI safely with sample data.")
+        return
+
     mode = st.session_state.get("paai_mode", "Demo")
     display_name = get_paai_display_name()
 
@@ -1625,6 +1680,8 @@ def show_book_recommendations():
 
 def show_literacy_agent_tabs():
     st.header("Literacy Agent")
+
+    st.caption(f"📚 Current Literacy book file: `{get_books_inventory_path()}`")
 
     set_paai_data_environment()
 
@@ -2190,6 +2247,15 @@ if st.button("Save Feedback", use_container_width=True):
 
 # --- PAAI USER GREETING V1 ---
 from datetime import datetime as paai_datetime
+from tools.literacy_storage_tool import DYNAMIC_BOOKS_INVENTORY_PATH, get_books_inventory_path
+from tools.literacy_storage_tool import get_books_inventory_path
+
+# --- PAAI ACTIVE DATA DIR HELPER ---
+def get_paai_active_data_dir():
+    data_dir = Path(os.getenv("PAAI_DATA_DIR", "data"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
+
 
 def get_time_based_wish():
     current_hour = paai_datetime.now().hour

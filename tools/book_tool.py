@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 import pandas as pd
+from tools.literacy_storage_tool import DYNAMIC_BOOKS_INVENTORY_PATH, get_books_inventory_path
 
 
 def get_books_inventory_path():

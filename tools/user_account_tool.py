@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 from datetime import datetime
@@ -11,6 +12,19 @@ def slugify_user_id(display_name):
     base = str(display_name or "user").strip().lower()
     base = re.sub(r"[^a-z0-9]+", "_", base).strip("_")
     return base or "user"
+
+
+def normalize_tester_code(tester_code):
+    return str(tester_code or "").strip()
+
+
+def hash_tester_code(tester_code):
+    normalized_code = normalize_tester_code(tester_code)
+
+    if not normalized_code:
+        return ""
+
+    return hashlib.sha256(normalized_code.encode("utf-8")).hexdigest()
 
 
 def get_user_data_dir(user_id):
@@ -36,28 +50,51 @@ def list_users():
         except Exception:
             continue
 
-    users = sorted(users, key=lambda item: item.get("display_name", "").lower())
-    return users
+    return sorted(users, key=lambda item: item.get("display_name", "").lower())
 
 
-def create_or_update_user(
+def find_account_by_tester_code(tester_code):
+    code_hash = hash_tester_code(tester_code)
+
+    if not code_hash:
+        return None
+
+    for account in list_users():
+        if account.get("tester_code_hash") == code_hash:
+            return account
+
+    return None
+
+
+def register_user(
     display_name,
+    tester_code,
     optional_email="",
     consent_to_save_feedback=False,
     consent_to_use_feedback_for_training=False,
 ):
     display_name = str(display_name or "").strip()
+    tester_code = normalize_tester_code(tester_code)
 
     if not display_name:
         raise ValueError("Display name is required.")
 
+    if len(tester_code) < 4:
+        raise ValueError("Tester code must be at least 4 characters.")
+
     user_id = slugify_user_id(display_name)
+    existing_code_owner = find_account_by_tester_code(tester_code)
+
+    if existing_code_owner and existing_code_owner.get("user_id") != user_id:
+        raise ValueError("That tester code is already in use. Choose a different code.")
+
     user_dir = get_user_data_dir(user_id)
 
     account = {
         "user_id": user_id,
         "display_name": display_name,
-        "optional_email": optional_email,
+        "optional_email": str(optional_email or "").strip(),
+        "tester_code_hash": hash_tester_code(tester_code),
         "consent_to_save_feedback": bool(consent_to_save_feedback),
         "consent_to_use_feedback_for_training": bool(consent_to_use_feedback_for_training),
         "created_or_updated_at": datetime.now().isoformat(timespec="seconds"),
@@ -69,7 +106,6 @@ def create_or_update_user(
         encoding="utf-8",
     )
 
-    # Create starter profile if missing.
     profile_path = user_dir / "user_profile.json"
     if not profile_path.exists():
         profile_path.write_text(
@@ -91,7 +127,6 @@ def create_or_update_user(
             encoding="utf-8",
         )
 
-    # Create starter context if missing.
     context_path = user_dir / "user_context.json"
     if not context_path.exists():
         context_path.write_text(
@@ -119,3 +154,24 @@ def create_or_update_user(
         )
 
     return account
+
+
+def authenticate_user_by_code(tester_code):
+    return find_account_by_tester_code(tester_code)
+
+
+# Backward-compatible wrapper for older app code.
+def create_or_update_user(
+    display_name,
+    optional_email="",
+    consent_to_save_feedback=False,
+    consent_to_use_feedback_for_training=False,
+):
+    fallback_code = slugify_user_id(display_name) + "_local"
+    return register_user(
+        display_name=display_name,
+        tester_code=fallback_code,
+        optional_email=optional_email,
+        consent_to_save_feedback=consent_to_save_feedback,
+        consent_to_use_feedback_for_training=consent_to_use_feedback_for_training,
+    )

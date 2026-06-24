@@ -7,6 +7,22 @@ from PIL import Image
 
 from tools.book_metadata_tool import enrich_books_inventory
 from tools.openai_client import call_model, client
+from tools.literacy_storage_tool import DYNAMIC_BOOKS_INVENTORY_PATH, get_books_inventory_path
+
+# --- PAAI LITERACY USER DATA PATHS ---
+def get_literacy_data_dir():
+    data_dir = Path(os.getenv("PAAI_DATA_DIR", "data"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
+
+
+def get_books_inventory_path():
+    return get_literacy_data_dir() / "books_inventory.csv"
+
+
+def get_books_library_path():
+    return get_books_inventory_path()
+
 
 
 VISION_MODEL = "gpt-4.1"
