@@ -11,3 +11,7 @@ skills/*_checkpoint_*.py
 app_local_uncommitted_backup.py
 skills/*_local_uncommitted_backup.py
 welcome-to-docker/
+
+# Local backup files
+*_backup_*
+evals/*backup*
