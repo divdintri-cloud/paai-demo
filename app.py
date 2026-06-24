@@ -661,10 +661,6 @@ def route_home_question(home_question):
 
     st.session_state.routed_question = home_question
 
-    if st.session_state.get("paai_mode", "Demo") == "Demo" and is_payment_question(home_question):
-        st.info("Payment Reminder Agent is disabled in Demo mode.")
-        return
-
     if is_grocery_question(home_question):
         log_activity(
             user_question=home_question,
@@ -1520,3 +1516,83 @@ elif agent == "Activity Log":
 else:
     st.header(agent)
     st.info("This agent will be added later.")
+
+
+# --- PAAI FEEDBACK WIDGET V1 ---
+st.divider()
+st.subheader("Feedback")
+
+st.caption("Help improve PAAI by marking whether this page or response was useful.")
+
+feedback_col1, feedback_col2 = st.columns(2)
+
+if "paai_feedback_choice" not in st.session_state:
+    st.session_state.paai_feedback_choice = ""
+
+with feedback_col1:
+    if st.button("👍 Helpful", use_container_width=True):
+        st.session_state.paai_feedback_choice = "Yes"
+
+with feedback_col2:
+    if st.button("👎 Needs improvement", use_container_width=True):
+        st.session_state.paai_feedback_choice = "No"
+
+feedback_notes = st.text_area(
+    "Correction notes",
+    placeholder="What should PAAI improve?",
+    key="paai_feedback_notes",
+)
+
+ideal_answer = st.text_area(
+    "Ideal answer",
+    placeholder="Optional: write what the better answer should have been.",
+    key="paai_ideal_answer",
+)
+
+if st.button("Save Feedback", use_container_width=True):
+    if not st.session_state.paai_feedback_choice:
+        st.warning("Please select Helpful or Needs improvement first.")
+    else:
+        from datetime import datetime
+        import csv
+        from pathlib import Path
+
+        feedback_path = Path("evals") / "paai_feedback_log.csv"
+        feedback_path.parent.mkdir(parents=True, exist_ok=True)
+
+        file_exists = feedback_path.exists()
+
+        with feedback_path.open("a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+
+            if not file_exists or feedback_path.stat().st_size == 0:
+                writer.writerow([
+                    "Timestamp",
+                    "Mode",
+                    "Agent",
+                    "Helpful",
+                    "Correction Notes",
+                    "Ideal Answer",
+                ])
+
+            writer.writerow([
+                datetime.now().isoformat(timespec="seconds"),
+                st.session_state.get("paai_mode", "Demo"),
+                st.session_state.get("selected_agent", "Unknown"),
+                st.session_state.paai_feedback_choice,
+                feedback_notes,
+                ideal_answer,
+            ])
+
+        try:
+            log_activity(
+                user_question="Feedback submitted",
+                routed_agent=st.session_state.get("selected_agent", "Unknown"),
+                action="Save feedback",
+                result_summary=f"Helpful: {st.session_state.paai_feedback_choice}",
+            )
+        except Exception:
+            pass
+
+        st.success("Feedback saved.")
+        st.session_state.paai_feedback_choice = ""

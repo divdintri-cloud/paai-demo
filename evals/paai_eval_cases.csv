@@ -1,10 +1,20 @@
 Test Name,User Input,Expected Agent,Expected Behavior,Status,Notes
-Book routing,Recommend a book for focus,Literacy Agent,Routes to mood-based book recommendations,Not run,
-Book library,Show my library,Literacy Agent,Shows saved book library,Not run,
-Book photo,Add a book from photo,Literacy Agent,Opens book photo upload flow,Not run,
-Grocery routing,What groceries do I need to restock?,Grocery Help Agent,Routes to grocery help agent,Not run,
-Grocery no data,No grocery photo uploaded,Grocery Help Agent,Shows Data not available or asks for photo,Not run,
-Payment routing,What payments are due soon?,Payment Reminder Agent,Routes to payment reminder dashboard,Not run,
-Payment upload,Upload payment bills,Payment Reminder Agent,Opens upload payment details or bills tab,Not run,
-Demo safety,Open app in Demo mode,PAAI Home,Hides private data and shows safety warning,Not run,
-Activity log,Open activity log,Activity Log,Shows recent PAAI activity or Data not available,Not run,
+Recommend a book for focus,Literacy Agent,Routes to mood-based book recommendations,run,fail,did not route to the mood recomemndations
+Show my library,Literacy Agent,Shows saved book library,run,pass,routes to literacy agent 
+Add a book from photo,Literacy Agent,Opens book photo upload flow,run,pass,route to the literacy agent
+What groceries do I need to restock?,Grocery Help Agent,Routes to grocery help agent,run,pass, we need to display from the already saved grocery 
+No grocery photo uploaded,Grocery Help Agent,Shows Data not available or asks for photo,run,fail.it routes but does not say no data available,
+What payments are due soon?,Payment Reminder Agent,Routes to payment reminder dashboard,run,pass,payment reminder agent is disabled
+Upload payment bills,Payment Reminder Agent,Opens upload payment details or bills tab,run,fail,does not exist 
+Open app in Demo mode,PAAI Home,Hides private data and shows safety warning,run,pass, works
+Open activity log,Activity Log,Shows recent PAAI activity or Data not available,run, pass, works
+Friend feedback - book recommendation,Recommend a book when I feel stressed,Literacy Agent,Recommends books clearly and asks for more info if library data is missing,Not run,Ask tester: Was this useful and personal enough?
+Friend feedback - book ownership,Do I own Atomic Habits?,Literacy Agent,Checks saved library and clearly says whether the book exists,Not run,Ask tester: Was the answer clear and trustworthy?
+Friend feedback - grocery no data,What groceries should I buy today?,Grocery Help Agent,If no grocery photo exists, explains that grocery data is unavailable and asks for upload,Not run,Ask tester: Was the fallback helpful or annoying?
+Friend feedback - grocery photo,Upload a grocery photo and ask what to restock,Grocery Help Agent,Extracts visible items and gives useful restock suggestions,Not run,Ask tester: Were the suggestions accurate?
+Friend feedback - payment safety,What payments are due soon?,Payment Reminder Agent,Shows payment dashboard without exposing sensitive details in Demo mode,Not run,Ask tester: Did this feel safe and clear?
+Friend feedback - payment upload,Upload sample payment details,Payment Reminder Agent,Previews parsed reminders before saving,Not run,Ask tester: Was upload flow understandable?
+Friend feedback - home routing,Ask from Home: recommend a book for focus,PAAI Home,Routes to the correct agent without confusion,Not run,Ask tester: Did routing feel natural?
+Friend feedback - confusing question,I am overwhelmed, what should I do?,PAAI Home,Either routes thoughtfully or asks a useful clarifying question,Not run,Ask tester: Did PAAI respond helpfully?
+Friend feedback - demo privacy,Use Demo mode and browse all agents,PAAI Home,Does not expose private personal data,Not run,Ask tester: Did anything feel too personal or unsafe?
+Friend feedback - overall impression,Use PAAI for 5 minutes,All Agents,Tester can understand what PAAI does and how to use it,Not run,Ask tester: What is one thing to improve?

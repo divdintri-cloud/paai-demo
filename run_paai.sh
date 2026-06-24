@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd ~/PAAI || exit 1
+cd "$HOME/PAAI" || exit 1
 source .venv/bin/activate
 
-streamlit run app.py --server.port 8501
+streamlit run app.py --server.port 8507
