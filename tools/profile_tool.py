@@ -4,7 +4,6 @@ from pathlib import Path
 
 PROFILE_PATH = Path("data") / "user_profile.json"
 
-
 DEFAULT_PROFILE = {
     "name": "User",
     "timezone": "America/Chicago",

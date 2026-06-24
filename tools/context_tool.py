@@ -4,7 +4,6 @@ from pathlib import Path
 
 CONTEXT_PATH = Path("data") / "user_context.json"
 
-
 DEFAULT_CONTEXT = {
     "current_priorities": [
         "Use PAAI safely",
