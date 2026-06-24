@@ -47,3 +47,8 @@ data/users/
 data/user_profile.json
 data/user_context.json
 data/divya_profile.json
+
+# Local checkpoints
+checkpoints/
+*checkpoint*.py
+*_working.py
