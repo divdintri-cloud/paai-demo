@@ -54,6 +54,7 @@ demo_agent_options = [
     "Literacy Agent",
     "Payment Reminder Agent",
     "Grocery Help Agent",
+    "Divya Profile",
     "Activity Log",
     "Evaluation Dashboard",
     "Entertainment Agent",
@@ -1462,6 +1463,112 @@ def show_evaluation_dashboard():
     st.write("5. Save eval results.")
 
 
+
+def get_divya_profile_path():
+    return Path("data") / "divya_profile.json"
+
+
+def load_divya_profile():
+    profile_path = get_divya_profile_path()
+
+    default_profile = {
+        "name": "Divya",
+        "timezone": "America/Chicago",
+        "primary_goal": "Transition into an AI Product Manager role",
+        "preferred_style": "Step-by-step, practical, beginner-friendly",
+        "privacy_preference": "Keep personal data local",
+        "current_project": "PAAI 1.0",
+        "career_focus": "AI Product Manager role transformation",
+        "learning_focus": "LLMs, agents, evals, personalization, product strategy",
+        "response_preference": "Clear instructions with commands, checkpoints, and careful changes",
+        "notes": "PAAI should act as Divya's personal assistant while keeping Demo mode generic and safe.",
+    }
+
+    if not profile_path.exists():
+        profile_path.parent.mkdir(parents=True, exist_ok=True)
+        profile_path.write_text(json.dumps(default_profile, indent=2), encoding="utf-8")
+        return default_profile
+
+    try:
+        return json.loads(profile_path.read_text(encoding="utf-8"))
+    except Exception:
+        return default_profile
+
+
+def save_divya_profile(profile):
+    profile_path = get_divya_profile_path()
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+
+
+def show_divya_profile():
+    st.header("Divya Profile")
+
+    st.caption(
+        "This is PAAI's personalization layer. It stores Divya-specific context locally "
+        "so PAAI can become more personal over time."
+    )
+
+    if st.session_state.get("paai_mode", "Demo") == "Demo":
+        st.info("Demo mode uses safe generic behavior. Switch to Personal mode to edit Divya's local profile.")
+        profile = load_divya_profile()
+
+        st.subheader("Profile Summary")
+        st.write(f"**Name:** {profile.get('name', 'Divya')}")
+        st.write(f"**Primary goal:** {profile.get('primary_goal', '')}")
+        st.write(f"**Current project:** {profile.get('current_project', '')}")
+        st.write(f"**Preferred style:** {profile.get('preferred_style', '')}")
+        return
+
+    profile = load_divya_profile()
+
+    st.subheader("Edit Personal Profile")
+
+    name = st.text_input("Name", value=profile.get("name", "Divya"))
+    timezone = st.text_input("Timezone", value=profile.get("timezone", "America/Chicago"))
+    primary_goal = st.text_area("Primary goal", value=profile.get("primary_goal", ""))
+    preferred_style = st.text_area("Preferred response style", value=profile.get("preferred_style", ""))
+    privacy_preference = st.text_area("Privacy preference", value=profile.get("privacy_preference", ""))
+    current_project = st.text_input("Current project", value=profile.get("current_project", "PAAI 1.0"))
+    career_focus = st.text_area("Career focus", value=profile.get("career_focus", ""))
+    learning_focus = st.text_area("Learning focus", value=profile.get("learning_focus", ""))
+    response_preference = st.text_area("Response preference", value=profile.get("response_preference", ""))
+    notes = st.text_area("Notes", value=profile.get("notes", ""))
+
+    updated_profile = {
+        "name": name,
+        "timezone": timezone,
+        "primary_goal": primary_goal,
+        "preferred_style": preferred_style,
+        "privacy_preference": privacy_preference,
+        "current_project": current_project,
+        "career_focus": career_focus,
+        "learning_focus": learning_focus,
+        "response_preference": response_preference,
+        "notes": notes,
+    }
+
+    if st.button("Save Divya Profile", use_container_width=True):
+        save_divya_profile(updated_profile)
+
+        try:
+            log_activity(
+                user_question="Update Divya Profile",
+                routed_agent="Divya Profile",
+                action="Save profile",
+                result_summary="Updated local personalization profile.",
+            )
+        except Exception:
+            pass
+
+        st.success("Divya Profile saved.")
+
+    st.divider()
+
+    st.subheader("Raw Profile JSON")
+    st.json(updated_profile)
+
+
 if agent == "PAAI Home":
     show_paai_home()
 
@@ -1493,6 +1600,9 @@ elif agent == "Literacy Agent":
 elif agent == "Evaluation Dashboard":
     show_evaluation_dashboard()
 
+
+elif agent == "Divya Profile":
+    show_divya_profile()
 
 elif agent == "Activity Log":
     st.header("PAAI Activity Log")
