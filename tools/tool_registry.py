@@ -1,3 +1,4 @@
+from tools.book_tool import get_book_library_summary, search_book_library
 from tools.profile_tool import load_user_profile, save_user_profile
 from tools.context_tool import load_user_context, save_user_context
 from tools.feedback_tool import save_feedback
@@ -54,6 +55,22 @@ def list_tools():
             "connects_to": "evals/paai_feedback_log.csv",
             "output_type": "CSV + JSONL",
         },
+        {
+            "name": "get_book_library_summary",
+            "description": "Summarize the saved book library for the Literacy Agent.",
+            "status": "Available",
+            "safe_in_demo": "Yes",
+            "connects_to": "books_inventory.csv",
+            "output_type": "JSON summary",
+        },
+        {
+            "name": "search_book_library",
+            "description": "Search saved books by title, author, language, genre, or mood.",
+            "status": "Available",
+            "safe_in_demo": "Yes",
+            "connects_to": "books_inventory.csv",
+            "output_type": "JSON search results",
+        },
     ]
 
 
@@ -77,5 +94,11 @@ def call_tool(tool_name, arguments=None):
 
     if tool_name == "export_training_examples":
         return export_training_examples()
+
+    if tool_name == "get_book_library_summary":
+        return get_book_library_summary()
+
+    if tool_name == "search_book_library":
+        return search_book_library(arguments.get("query", ""))
 
     raise ValueError(f"Unknown tool: {tool_name}")
