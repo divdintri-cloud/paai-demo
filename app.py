@@ -23,6 +23,7 @@ from skills.payment_skills import (
     save_payment_reminders,
 )
 from skills.activity_log import log_activity, get_recent_activity
+from tools.feedback_tool import save_feedback
 
 
 # BOOKS_DB_PATH removed for Demo Mode; use get_books_inventory_path() instead
