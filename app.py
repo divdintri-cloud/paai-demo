@@ -1706,3 +1706,49 @@ if st.button("Save Feedback", use_container_width=True):
 
         st.success("Feedback saved.")
         st.session_state.paai_feedback_choice = ""
+
+
+# --- PAAI USER GREETING V1 ---
+from datetime import datetime as paai_datetime
+
+def get_time_based_wish():
+    current_hour = paai_datetime.now().hour
+
+    if current_hour < 12:
+        return "Good morning"
+    elif current_hour < 17:
+        return "Good afternoon"
+    else:
+        return "Good evening"
+
+
+st.sidebar.divider()
+st.sidebar.subheader("User")
+
+if "paai_display_name" not in st.session_state:
+    st.session_state.paai_display_name = ""
+
+entered_display_name = st.sidebar.text_input(
+    "What should PAAI call you?",
+    value=st.session_state.paai_display_name,
+    placeholder="Type your first name",
+    key="paai_display_name_input",
+)
+
+if entered_display_name.strip():
+    st.session_state.paai_display_name = entered_display_name.strip()
+
+display_name = st.session_state.get("paai_display_name", "").strip()
+current_mode = st.session_state.get("paai_mode", "Demo")
+wish = get_time_based_wish()
+
+if display_name:
+    if current_mode == "Demo":
+        st.sidebar.success(f"{wish}, {display_name} 👋 Welcome to PAAI Demo.")
+    else:
+        st.sidebar.success(f"{wish}, {display_name} 👋 Welcome back to PAAI 1.0.")
+else:
+    if current_mode == "Demo":
+        st.sidebar.info(f"{wish} 👋 Welcome to PAAI Demo.")
+    else:
+        st.sidebar.info(f"{wish} 👋 Welcome back to PAAI 1.0.")
