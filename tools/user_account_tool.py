@@ -20,10 +20,8 @@ def normalize_tester_code(tester_code):
 
 def hash_tester_code(tester_code):
     normalized_code = normalize_tester_code(tester_code)
-
     if not normalized_code:
         return ""
-
     return hashlib.sha256(normalized_code.encode("utf-8")).hexdigest()
 
 
@@ -91,6 +89,7 @@ def register_user(
     preferred_response_style="",
     literacy_goal="",
     privacy_notes="",
+    **extra_context,
 ):
     display_name = str(display_name or "").strip()
     tester_code = normalize_tester_code(tester_code)
@@ -123,6 +122,7 @@ def register_user(
         "preferred_response_style": str(preferred_response_style or "").strip(),
         "literacy_goal": str(literacy_goal or "").strip(),
         "privacy_notes": str(privacy_notes or "").strip(),
+        "extra_context": extra_context,
         "created_or_updated_at": datetime.now().isoformat(timespec="seconds"),
         "data_dir": str(user_dir),
     }
@@ -151,7 +151,7 @@ def register_user(
     if profile_path.exists():
         try:
             existing_profile = json.loads(profile_path.read_text(encoding="utf-8"))
-            existing_profile.update({k: v for k, v in profile.items() if v})
+            existing_profile.update({key: value for key, value in profile.items() if value})
             profile = existing_profile
         except Exception:
             pass
@@ -167,13 +167,13 @@ def register_user(
         "assistant_should": [
             account["preferred_response_style"] or "Be clear",
             "Be helpful",
-            "Protect privacy"
+            "Protect privacy",
         ],
         "assistant_should_not": [
-            "Expose personal details in Demo mode"
+            "Expose personal details in Demo mode",
         ],
         "privacy_notes": [
-            account["privacy_notes"] or "Personal data should stay local"
+            account["privacy_notes"] or "Personal data should stay local",
         ],
         "role_or_stage": account["role_or_stage"],
         "interests": account["interests"],
@@ -183,7 +183,7 @@ def register_user(
     if context_path.exists():
         try:
             existing_context = json.loads(context_path.read_text(encoding="utf-8"))
-            existing_context.update({k: v for k, v in context.items() if v})
+            existing_context.update({key: value for key, value in context.items() if value})
             context = existing_context
         except Exception:
             pass
@@ -204,6 +204,7 @@ def create_or_update_user(
     consent_to_use_feedback_for_training=False,
 ):
     fallback_code = slugify_user_id(display_name) + "_local"
+
     return register_user(
         display_name=display_name,
         tester_code=fallback_code,

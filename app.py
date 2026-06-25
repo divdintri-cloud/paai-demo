@@ -1848,6 +1848,224 @@ def save_eval_cases(eval_df):
     eval_df.to_csv(eval_path, index=False)
 
 
+
+# --- PAAI FEEDBACK DASHBOARD HELPERS ---
+def load_feedback_log_for_dashboard():
+    feedback_path = Path("evals") / "paai_feedback_log.csv"
+
+    if not feedback_path.exists():
+        return pd.DataFrame()
+
+    try:
+        return pd.read_csv(feedback_path)
+    except Exception:
+        try:
+            return pd.read_csv(feedback_path, engine="python", on_bad_lines="skip")
+        except Exception:
+            return pd.DataFrame()
+
+
+def normalize_feedback_value(value):
+    return str(value or "").strip().lower()
+
+
+def show_feedback_dashboard_section():
+    st.divider()
+    st.subheader("Feedback Dashboard")
+
+    st.caption(
+        "Use this section like an AI Product Manager: spot weak agents, review user pain points, "
+        "and identify feedback that can become eval cases or training examples."
+    )
+
+    feedback_df = load_feedback_log_for_dashboard()
+
+    if feedback_df.empty:
+        st.info("No feedback captured yet.")
+        return
+
+    for column in [
+        "Mode",
+        "Agent",
+        "Active User ID",
+        "Active User Name",
+        "Helpful",
+        "Use For Training",
+        "Consent To Save Feedback",
+        "Consent To Use Feedback For Training",
+        "Ideal Answer",
+        "Correction Notes",
+    ]:
+        if column not in feedback_df.columns:
+            feedback_df[column] = ""
+
+    helpful_series = feedback_df["Helpful"].fillna("").astype(str).str.lower()
+    training_series = feedback_df["Use For Training"].fillna("").astype(str).str.lower()
+    training_consent_series = feedback_df["Consent To Use Feedback For Training"].fillna("").astype(str).str.lower()
+    ideal_answer_series = feedback_df["Ideal Answer"].fillna("").astype(str).str.strip()
+
+    total_feedback = len(feedback_df)
+    helpful_count = helpful_series.str.contains("helpful", na=False).sum()
+    needs_improvement_count = helpful_series.str.contains("needs", na=False).sum()
+    training_approved_count = (
+        training_series.eq("yes") &
+        training_consent_series.isin(["true", "yes", "1"])
+    ).sum()
+    ideal_answer_count = ideal_answer_series.ne("").sum()
+
+    col_a, col_b, col_c, col_d, col_e = st.columns(5)
+
+    with col_a:
+        st.metric("Total feedback", total_feedback)
+
+    with col_b:
+        st.metric("Helpful", int(helpful_count))
+
+    with col_c:
+        st.metric("Needs improvement", int(needs_improvement_count))
+
+    with col_d:
+        st.metric("Training-approved", int(training_approved_count))
+
+    with col_e:
+        st.metric("Has ideal answer", int(ideal_answer_count))
+
+    st.divider()
+
+    tab_overview, tab_users, tab_agents, tab_training, tab_raw = st.tabs(
+        [
+            "Overview",
+            "Users",
+            "Agents",
+            "Training readiness",
+            "Raw feedback",
+        ]
+    )
+
+    with tab_overview:
+        st.write("Feedback by mode")
+        mode_summary = (
+            feedback_df.groupby("Mode", dropna=False)
+            .size()
+            .reset_index(name="Feedback Count")
+            .sort_values("Feedback Count", ascending=False)
+        )
+        st.dataframe(mode_summary, use_container_width=True, hide_index=True)
+
+        st.write("Recent feedback")
+        recent_columns = [
+            "Timestamp",
+            "Mode",
+            "Agent",
+            "Active User Name",
+            "Helpful",
+            "User Question",
+            "Correction Notes",
+            "Ideal Answer",
+        ]
+        available_recent_columns = [column for column in recent_columns if column in feedback_df.columns]
+        st.dataframe(
+            feedback_df[available_recent_columns].tail(10),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with tab_users:
+        st.write("Feedback by user")
+        user_summary = (
+            feedback_df.groupby(["Active User ID", "Active User Name"], dropna=False)
+            .size()
+            .reset_index(name="Feedback Count")
+            .sort_values("Feedback Count", ascending=False)
+        )
+        st.dataframe(user_summary, use_container_width=True, hide_index=True)
+
+    with tab_agents:
+        st.write("Agent quality summary")
+
+        agent_summary = (
+            feedback_df.groupby("Agent", dropna=False)
+            .agg(
+                Feedback_Count=("Agent", "size"),
+                Helpful_Count=("Helpful", lambda values: values.fillna("").astype(str).str.lower().str.contains("helpful").sum()),
+                Needs_Improvement_Count=("Helpful", lambda values: values.fillna("").astype(str).str.lower().str.contains("needs").sum()),
+            )
+            .reset_index()
+            .sort_values("Feedback_Count", ascending=False)
+        )
+
+        st.dataframe(agent_summary, use_container_width=True, hide_index=True)
+
+        st.write("Feedback needing review")
+        review_df = feedback_df[
+            feedback_df["Helpful"].fillna("").astype(str).str.lower().str.contains("needs", na=False)
+        ]
+        review_columns = [
+            "Timestamp",
+            "Agent",
+            "Active User Name",
+            "User Question",
+            "Correction Notes",
+            "Ideal Answer",
+        ]
+        available_review_columns = [column for column in review_columns if column in review_df.columns]
+        st.dataframe(
+            review_df[available_review_columns].tail(20),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with tab_training:
+        st.write("Training readiness")
+
+        training_ready_df = feedback_df[
+            (feedback_df["Use For Training"].fillna("").astype(str).str.lower() == "yes") &
+            (feedback_df["Consent To Use Feedback For Training"].fillna("").astype(str).str.lower().isin(["true", "yes", "1"])) &
+            (feedback_df["Ideal Answer"].fillna("").astype(str).str.strip() != "")
+        ]
+
+        blocked_training_df = feedback_df[
+            (feedback_df["Use For Training"].fillna("").astype(str).str.lower() == "yes") &
+            (~feedback_df["Consent To Use Feedback For Training"].fillna("").astype(str).str.lower().isin(["true", "yes", "1"]))
+        ]
+
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            st.metric("Ready for training export", len(training_ready_df))
+        with col_t2:
+            st.metric("Blocked by missing training consent", len(blocked_training_df))
+
+        st.write("Ready rows")
+        training_columns = [
+            "Timestamp",
+            "Agent",
+            "Active User Name",
+            "User Question",
+            "Ideal Answer",
+            "Use For Training",
+            "Consent To Use Feedback For Training",
+        ]
+        available_training_columns = [column for column in training_columns if column in training_ready_df.columns]
+        st.dataframe(
+            training_ready_df[available_training_columns],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with tab_raw:
+        st.write("Raw feedback log")
+        st.dataframe(feedback_df, use_container_width=True, hide_index=True)
+
+        csv_data = feedback_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download feedback CSV",
+            data=csv_data,
+            file_name="paai_feedback_dashboard_export.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+
 def show_evaluation_dashboard():
     st.header("PAAI Evaluation Dashboard")
 
