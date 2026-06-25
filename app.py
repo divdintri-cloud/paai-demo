@@ -275,7 +275,7 @@ else:
             with st.sidebar.form("paai_register_form"):
                 display_name = st.text_input(
                     "Display name",
-                    placeholder="Example: Prabha",
+                    placeholder="Example: Friend 1",
                 )
 
                 optional_email = st.text_input(
@@ -418,6 +418,7 @@ st.sidebar.divider()
 
 demo_agent_options = [
     "PAAI Home",
+    "Tester Welcome",
     "Literacy Agent",
     "Payment Reminder Agent",
     "Grocery Help Agent",
@@ -434,6 +435,7 @@ demo_agent_options = [
 
 personal_agent_options = [
     "PAAI Home",
+    "Tester Welcome",
     "Literacy Agent",
     "Payment Reminder Agent",
     "Grocery Help Agent",
@@ -1226,6 +1228,88 @@ def show_personalized_home_intro():
         for index, item in enumerate(recommendations, start=1):
             st.write(f"{index}. {item}")
 
+
+
+
+# --- PAAI TESTER WELCOME SCREEN ---
+def show_tester_welcome():
+    st.header("Welcome to PAAI Beta")
+
+    st.success(
+        "You are helping test PAAI — a personal AI assistant prototype. "
+        "Your feedback helps improve the product, the agents, and the user experience."
+    )
+
+    mode = st.session_state.get("paai_mode", "Demo")
+
+    st.subheader("Start here")
+
+    st.write(
+        "PAAI has two modes. Use Demo mode first if you are just exploring. "
+        "Use Personal mode only if you want PAAI to save your own profile, books, and feedback."
+    )
+
+    col_demo, col_personal = st.columns(2)
+
+    with col_demo:
+        st.markdown("### Demo mode")
+        st.write("Best for safe exploration.")
+        st.write("- Uses sample/demo data")
+        st.write("- Does not require sign-in")
+        st.write("- Hides personalized recommendations")
+        st.write("- Good for first-time testing")
+
+    with col_personal:
+        st.markdown("### Personal mode")
+        st.write("Best for user-specific testing.")
+        st.write("- Register with a tester code")
+        st.write("- Saves your profile context")
+        st.write("- Keeps your book library separate")
+        st.write("- Saves feedback only based on consent")
+
+    st.divider()
+
+    st.subheader("What to test")
+
+    st.write("Try these simple flows:")
+
+    st.write("1. Open **Demo mode** and explore PAAI Home.")
+    st.write("2. Try the **Literacy Agent** with a book photo or saved book library.")
+    st.write("3. Switch to **Personal mode** and register with a tester code.")
+    st.write("4. Add a book and confirm it stays under your own account.")
+    st.write("5. Submit feedback using the Feedback section.")
+
+    st.divider()
+
+    st.subheader("Privacy and safety")
+
+    st.warning(
+        "Do not upload sensitive images, IDs, bank statements, medical records, private documents, "
+        "or anything you would not want used in a test environment."
+    )
+
+    st.write(
+        "Feedback may be saved for product improvement if you consent during registration. "
+        "Feedback marked for training should only be used when training consent is also enabled."
+    )
+
+    st.divider()
+
+    st.subheader("Current mode")
+
+    if mode == "Demo":
+        st.info("You are currently in Demo mode. This is the safest place to start.")
+    else:
+        active_user = st.session_state.get("active_user_name", "")
+        if active_user:
+            st.info(f"You are currently in Personal mode as {active_user}.")
+        else:
+            st.info("You are currently in Personal mode. Register or sign in to continue.")
+
+    st.caption(
+        "Tester note: honest feedback is more valuable than polite feedback. "
+        "If something is confusing, broken, or awkward, say it. That is how the product improves."
+    )
 
 
 def show_paai_home():
@@ -2389,6 +2473,9 @@ def show_mcp_tool_registry():
 if agent == "PAAI Home":
     show_paai_home()
 
+elif agent == "Tester Welcome":
+    show_tester_welcome()
+
 
 elif agent == "Grocery Help Agent":
     show_grocery_agent()
@@ -2640,21 +2727,7 @@ def get_time_based_wish():
 st.sidebar.divider()
 st.sidebar.subheader("User")
 
-if "paai_display_name" not in st.session_state:
-    st.session_state.paai_display_name = ""
-
-entered_display_name = st.sidebar.text_input(
-    "What should PAAI call you?",
-    value=st.session_state.paai_display_name,
-    placeholder="Type your first name",
-    key="paai_display_name_input",
-)
-
-if entered_display_name.strip():
-    st.session_state.paai_display_name = entered_display_name.strip()
-
 display_name = st.session_state.get("paai_display_name", "").strip()
-current_mode = st.session_state.get("paai_mode", "Demo")
 wish = get_time_based_wish()
 
 if display_name:
