@@ -31,7 +31,7 @@ def _append_feedback_row(path, row):
 
     if path.exists():
         try:
-            feedback_df = pd.read_csv(path)
+            feedback_df = pd.read_csv(path, engine="python", on_bad_lines="skip")
         except Exception:
             feedback_df = pd.DataFrame(columns=FEEDBACK_COLUMNS)
     else:

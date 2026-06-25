@@ -27,7 +27,7 @@ from tools.feedback_tool import save_feedback
 from tools.context_tool import load_user_context
 from tools.profile_tool import load_user_profile, save_user_profile
 from tools.training_export_tool import load_feedback_log, get_training_ready_feedback, export_training_examples, TRAINING_CSV_PATH, TRAINING_JSONL_PATH
-from tools.tool_registry import list_tools
+from tools.tool_registry import list_tools, call_tool
 from tools.user_account_tool import register_user, authenticate_user_by_code, get_user_data_dir
 from datetime import datetime as paai_datetime
 
@@ -418,15 +418,11 @@ st.sidebar.divider()
 
 demo_agent_options = [
     "PAAI Home",
-    "Tester Welcome",
     "Literacy Agent",
     "Payment Reminder Agent",
     "Grocery Help Agent",
     "User Profile",
-    "Activity Log",
-    "MCP Tool Registry",
-    "Training Dataset Export",
-    "Evaluation Dashboard",
+    "Builder Dashboard",
     "Entertainment Agent",
     "AI Product Manager Role Transition Agent",
     "Task & Planning Agent",
@@ -435,11 +431,11 @@ demo_agent_options = [
 
 personal_agent_options = [
     "PAAI Home",
-    "Tester Welcome",
     "Literacy Agent",
     "Payment Reminder Agent",
     "Grocery Help Agent",
-    "Activity Log",
+    "User Profile",
+    "Builder Dashboard",
     "Entertainment Agent",
     "AI Product Manager Role Transition Agent",
     "Task & Planning Agent",
@@ -459,6 +455,9 @@ agent = st.sidebar.selectbox(
 )
 
 st.session_state.selected_agent = agent
+
+# --- PAAI CURRENT MODE FALLBACK ---
+current_mode = st.session_state.get("paai_mode", "Demo")
 
 
 
@@ -1312,7 +1311,41 @@ def show_tester_welcome():
     )
 
 
+
+# --- PAAI TESTER GUIDE COMPACT ---
+def show_tester_welcome_compact():
+    with st.expander("New here? Start with the tester guide", expanded=False):
+        st.write(
+            "Use this guide if you are testing PAAI for the first time. "
+            "Start in Demo mode, then use Personal mode only if you want your own profile and saved data."
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**Demo mode**")
+            st.write("- Safe first place to explore")
+            st.write("- Uses sample/demo data")
+            st.write("- No sign-in needed")
+
+        with col2:
+            st.markdown("**Personal mode**")
+            st.write("- Register with a tester code")
+            st.write("- Saves your own profile and feedback")
+            st.write("- Keeps your book library separate")
+
+        st.warning(
+            "Do not upload sensitive documents, IDs, medical records, bank statements, "
+            "or anything private while testing."
+        )
+
+        st.caption(
+            "Good tester feedback is honest feedback. Confusing, broken, or awkward moments are valuable."
+        )
+
+
 def show_paai_home():
+    show_tester_welcome_compact()
     show_personalized_home_intro()
     st.divider()
 
@@ -1912,7 +1945,7 @@ def load_eval_cases():
         )
 
     try:
-        return pd.read_csv(eval_path)
+        return pd.read_csv(eval_path, engine="python", on_bad_lines="skip")
     except pd.errors.EmptyDataError:
         return pd.DataFrame(
             columns=[
@@ -1941,7 +1974,7 @@ def load_feedback_log_for_dashboard():
         return pd.DataFrame()
 
     try:
-        return pd.read_csv(feedback_path)
+        return pd.read_csv(feedback_path, engine="python", on_bad_lines="skip")
     except Exception:
         try:
             return pd.read_csv(feedback_path, engine="python", on_bad_lines="skip")
@@ -2200,7 +2233,6 @@ def show_evaluation_dashboard():
         try:
             log_activity(
                 user_question="Update evaluation dashboard",
-                routed_agent="Evaluation Dashboard",
                 action="Save eval results",
                 result_summary=f"Saved {len(edited_df)} evaluation case(s).",
             )
@@ -2291,7 +2323,6 @@ def show_user_profile():
 
 
 def show_training_dataset_export():
-    st.header("Training Dataset Export")
 
     st.caption(
         "Export training-ready examples from feedback rows marked 'Use For Training = Yes'. "
@@ -2367,7 +2398,6 @@ def show_training_dataset_export():
         try:
             log_activity(
                 user_question="Export training dataset",
-                routed_agent="Training Dataset Export",
                 action="Export training examples",
                 result_summary=f"Exported {result.get('exported_count', 0)} training example(s).",
             )
@@ -2408,7 +2438,6 @@ def show_training_dataset_export():
 
 
 def show_mcp_tool_registry():
-    st.header("MCP Tool Registry")
 
     st.caption(
         "This screen shows PAAI's MCP-style internal tool layer. "
@@ -2455,6 +2484,123 @@ def show_mcp_tool_registry():
         use_container_width=True,
     )
 
+
+    st.divider()
+
+    st.subheader("Tool Console")
+
+    st.caption(
+        "Run a registered PAAI tool and inspect the output. "
+        "This is useful for debugging tool contracts, inputs, outputs, and agent behavior."
+    )
+
+    current_mode = st.session_state.get("paai_mode", "Demo")
+
+    console_df = tool_df.copy()
+
+    if current_mode == "Demo" and "safe_in_demo" in console_df.columns:
+        console_df = console_df[console_df["safe_in_demo"] == "Yes"]
+
+    if console_df.empty:
+        st.info("No runnable tools are available in this mode.")
+    else:
+        tool_names = console_df["name"].tolist()
+
+        selected_tool_name = st.selectbox(
+            "Select tool",
+            tool_names,
+            key="mcp_console_selected_tool",
+        )
+
+        selected_tool_row = console_df[console_df["name"] == selected_tool_name].iloc[0].to_dict()
+
+        st.write("Tool details")
+        st.json(
+            {
+                "name": selected_tool_row.get("name", ""),
+                "description": selected_tool_row.get("description", ""),
+                "safe_in_demo": selected_tool_row.get("safe_in_demo", ""),
+                "connects_to": selected_tool_row.get("connects_to", ""),
+                "output_type": selected_tool_row.get("output_type", ""),
+            }
+        )
+
+        default_arguments = "{}"
+
+        if selected_tool_name == "search_book_library":
+            default_arguments = '{\n  "query": "focus"\n}'
+
+        if selected_tool_name == "save_feedback":
+            default_arguments = json.dumps(
+                {
+                    "mode": st.session_state.get("paai_mode", "Demo"),
+                    "agent": "MCP Tool Console",
+                    "tester_name": st.session_state.get("active_user_name", "Demo User"),
+                    "user_question": "Testing MCP Tool Console",
+                    "helpful": "Helpful",
+                    "correction_notes": "",
+                    "ideal_answer": "",
+                    "agent_response_summary": "Tool console test",
+                    "use_for_training": "No",
+                    "active_user_id": st.session_state.get("active_user_id", "demo"),
+                    "active_user_name": st.session_state.get("active_user_name", "Demo User"),
+                    "consent_to_save_feedback": st.session_state.get("consent_to_save_feedback", True),
+                    "consent_to_use_feedback_for_training": st.session_state.get(
+                        "consent_to_use_feedback_for_training",
+                        False,
+                    ),
+                },
+                indent=2,
+            )
+
+        argument_text = st.text_area(
+            "Tool arguments as JSON",
+            value=default_arguments,
+            height=180,
+            key=f"mcp_console_arguments_{selected_tool_name}",
+        )
+
+        is_write_tool = selected_tool_name.startswith("save_") or selected_tool_name == "save_feedback"
+
+        allow_write_tool = True
+
+        if is_write_tool:
+            allow_write_tool = st.checkbox(
+                "I understand this tool may write data.",
+                value=False,
+                key=f"mcp_console_allow_write_{selected_tool_name}",
+            )
+
+        if st.button("Run Tool", use_container_width=True, key="mcp_console_run_tool"):
+            if is_write_tool and not allow_write_tool:
+                st.warning("This tool may write data. Check the confirmation box before running it.")
+            else:
+                try:
+                    parsed_arguments = json.loads(argument_text or "{}")
+
+                    if not isinstance(parsed_arguments, dict):
+                        st.error("Tool arguments must be a JSON object.")
+                    else:
+                        result = call_tool(selected_tool_name, parsed_arguments)
+
+                        st.success("Tool ran successfully.")
+                        st.write("Tool output")
+                        st.json(result)
+
+                        try:
+                            safe_log_activity(
+                                user_question=f"Run MCP tool: {selected_tool_name}",
+                                action="Run tool from console",
+                                result_summary=f"Ran {selected_tool_name}",
+                            )
+                        except Exception:
+                            pass
+
+                except json.JSONDecodeError as error:
+                    st.error(f"Invalid JSON: {error}")
+                except Exception as error:
+                    st.error(f"Tool error: {error}")
+
     st.divider()
 
     st.subheader("How PAAI uses this")
@@ -2470,10 +2616,50 @@ def show_mcp_tool_registry():
     )
 
 
+
+# --- PAAI BUILDER DASHBOARD ---
+def show_builder_dashboard():
+    st.header("Builder Dashboard")
+
+    st.caption(
+        "This area is for product building, debugging, evaluation, and AI PM learning. "
+        "Normal testers do not need to use these tools unless you ask them to."
+    )
+
+    activity_tab, mcp_tab, eval_tab, training_tab = st.tabs(
+        ["Activity Log", "MCP Tools", "Evaluation Dashboard", "Training Export"]
+    )
+
+    with activity_tab:
+
+        recent_df = get_recent_activity(limit=20)
+
+        if recent_df.empty:
+            st.info("No activity logged yet.")
+        else:
+            st.dataframe(recent_df, use_container_width=True)
+
+            csv_data = recent_df.to_csv(index=False)
+
+            st.download_button(
+                label="Download Recent Activity Log",
+                data=csv_data,
+                file_name="paai_recent_activity_log.csv",
+                mime="text/csv",
+            )
+
+    with mcp_tab:
+        show_mcp_tool_registry()
+
+    with eval_tab:
+        show_evaluation_dashboard()
+
+    with training_tab:
+        show_training_dataset_export()
+
 if agent == "PAAI Home":
     show_paai_home()
 
-elif agent == "Tester Welcome":
     show_tester_welcome()
 
 
@@ -2501,20 +2687,19 @@ elif agent == "Literacy Agent":
     show_literacy_agent_tabs()
 
 
-elif agent == "MCP Tool Registry":
     show_mcp_tool_registry()
 
-elif agent == "Training Dataset Export":
     show_training_dataset_export()
 
-elif agent == "Evaluation Dashboard":
     show_evaluation_dashboard()
 
 
 elif agent == "User Profile":
     show_user_profile()
 
-elif agent == "Activity Log":
+elif agent == "Builder Dashboard":
+    show_builder_dashboard()
+
     st.header("PAAI Activity Log")
 
     recent_df = get_recent_activity(limit=20)

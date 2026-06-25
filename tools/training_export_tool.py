@@ -29,7 +29,7 @@ def load_feedback_log():
         return pd.DataFrame(columns=REQUIRED_COLUMNS)
 
     try:
-        df = pd.read_csv(FEEDBACK_PATH)
+        df = pd.read_csv(FEEDBACK_PATH, engine="python", on_bad_lines="skip")
     except pd.errors.EmptyDataError:
         return pd.DataFrame(columns=REQUIRED_COLUMNS)
 
