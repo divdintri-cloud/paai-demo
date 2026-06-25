@@ -1,0 +1,15 @@
+services:
+  paai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: paai-local
+    ports:
+      - "8508:8508"
+    environment:
+      - STREAMLIT_SERVER_HEADLESS=true
+    volumes:
+      - ./data:/app/data
+      - ./demo_data:/app/demo_data
+      - ./evals:/app/evals
+    restart: unless-stopped

@@ -1,0 +1,27 @@
+.git
+.venv
+__pycache__
+*.pyc
+.DS_Store
+.env
+
+# Local/private user data
+data/
+data/users/
+
+# Local backups/checkpoints
+app_checkpoint_*.py
+*_checkpoint_*.py
+*_backup_*
+checkpoints/
+*_working.py
+
+# Local logs and generated training exports
+evals/*backup*
+evals/training_examples_export.csv
+evals/training_examples_export.jsonl
+evals/paai_feedback_log.csv
+demo_data/paai_activity_log.csv
+
+# Misc local files
+welcome-to-docker/
