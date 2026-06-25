@@ -6,8 +6,11 @@ services:
     container_name: paai-local
     ports:
       - "8508:8508"
+    env_file:
+      - .env
     environment:
       - STREAMLIT_SERVER_HEADLESS=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
       - ./data:/app/data
       - ./demo_data:/app/demo_data
